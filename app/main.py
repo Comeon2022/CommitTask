@@ -15,6 +15,7 @@ INSTANCE_CONNECTION_NAME = os.environ["INSTANCE_CONNECTION_NAME"]
 DB_NAME = os.environ["DB_NAME"]
 DB_IAM_USER = os.environ["DB_IAM_USER"]
 PROVIDER_TOKEN_SECRET = os.environ["PROVIDER_TOKEN_SECRET"]
+DB_PASSWORD_SECRET = os.environ["DB_PASSWORD_SECRET"]
 
 _secret_client = secretmanager.SecretManagerServiceClient()
 _connector = None
@@ -30,13 +31,11 @@ def connector():
     return _connector
 
 
-def read_provider_token() -> bool:
-    secret_name = (
-        f"projects/{PROJECT_ID}/secrets/{PROVIDER_TOKEN_SECRET}/versions/latest"
-    )
+def secret_exists_and_nonempty(secret_id: str) -> bool:
+    """Read payload using runtime identity; never return/log its contents."""
+    secret_name = f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"
     response = _secret_client.access_secret_version(request={"name": secret_name})
     return bool(response.payload.data)
-
 
 def sql_probe() -> bool:
     # The Cloud SQL Python Connector generates and refreshes temporary IAM tokens.
@@ -64,7 +63,10 @@ def health():
     db_ok = False
 
     try:
-        secret_ok = read_provider_token()
+        # Validate both required secrets on each request. SQL still uses IAM.
+                token_ok = secret_exists_and_nonempty(PROVIDER_TOKEN_SECRET)
+                password_ok = secret_exists_and_nonempty(DB_PASSWORD_SECRET)
+                secret_ok = token_ok and password_ok
     except Exception:
         app.logger.exception("Secret Manager health check failed")
 
