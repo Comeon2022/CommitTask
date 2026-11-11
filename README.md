@@ -1,17 +1,47 @@
-# Meridian Payments — Google Cloud evaluation
+# Meridian Payments — Google Cloud evaluation (PoC)
 
-**Status: bootstrap applied and converged per operator report; PoC not deployed.** Terraform defines a custom VPC, private PostgreSQL Cloud SQL, Cloud Run HTTP API, GCS state bucket and Secret Manager. All regional application resources use one chosen EU region (default `europe-west1`; allowed `europe-west3`/`europe-west4`). The Terraform State bucket intentionally uses EU multi-region for resilience. See `docs/REGION-DESIGN.md`. The `GET /health` handler performs a fresh IAM-authenticated SQL `SELECT 1` and live reads of both Secret Manager secrets. The API returns 503 on failure.
+**Status — 2026-11-11:** Deployed and exercised in Google Cloud project `commitask01` (project number `238671625358`), region `europe-west1`. This is a **PoC**, not a production-hardened payment system.
 
-**Identity and design:** A privileged bootstrap root creates 6 distinct service accounts (Terraform deployer, API runtime, migration runtime, 3 per-developer identities) and required IAM. Normal deployer has functional roles but no Owner/Editor/project IAM Admin. The Cloud Run API uses Cloud SQL **automatic IAM database authentication** via Python Connector, not an app password. Developer-triggered migration Job is designed, **not yet implemented**. See `docs/IAM-DESIGN.md`.
+## Demonstrated result
 
-**Run:** `docs/DEPLOY.md` (Windows PowerShell); requires existing GCP project, billing, Docker, Terraform, GCS bucket name, actual candidate name/image SHA. Do not commit keys or Terraform state. Terraform-generated DB password and synthetic provider token are stored in Terraform state (PoC limitation).
+- Cloud Run API: `meridian-poc-api`; public smoke test: [GET /health](https://meridian-poc-api-egkkxtz23a-ew.a.run.app/health).
+- The live endpoint has returned HTTP 200 with `db: ok`, `secret: ok`, and the actual Git source commit (`8d89261fff66faada4df9a49e25daa8d225d7961` in the last recorded successful test). Verify the current commit when reviewing; the image may have changed since this record.
+- PostgreSQL 16 on Cloud SQL: `meridian-poc-postgres`, **private IP only** (`10.128.0.3` at verification), automatic IAM database authentication. The health probe performs a fresh `SELECT 1`.
+- Secret Manager: two **synthetic/PoC** secrets are read during the health check. The database-password secret is not used for the API's IAM-authenticated SQL login.
+- Network: custom `meridian-poc-vpc`, `meridian-poc-subnet` (`10.42.0.0/24`), Private Google Access and private-ranges-only egress. The state bucket is in the EU multi-region; application resources are in `europe-west1`.
+- Image deployment uses an **immutable Artifact Registry digest**, not a mutable `latest` tag.
 
-**AI / review:** ChatGPT GPT-6 helped draft architecture and implementation; code percentage not yet measured. Complete the verbatim `AI-LOG.md` before submission, with 3 genuine AI correction references, time spent and uncompleted work. `CLARIFICATIONS.md` was committed alone first and remains unchanged. **Two-secret requirement:** a real password for a separate built-in DB user and a synthetic API token are both stored/read through Secret Manager; the API still uses IAM SQL login rather than the password. The proposed `db_secret_reader` group is documented but NOT implemented (requires Cloud Identity/Workspace directory). GitHub Actions PR validation is credential-free; the unsafe OIDC-backed PR plan was disabled. A separate read-only plan SA can run a protected manual plan from main; WIF has no deployer impersonation grant. A GitHub Actions Docker builder now builds and pushes a commit-tagged image with an immutable digest using a dedicated repository-scoped SA. New builder-related bootstrap IAM and workflow remain to be applied/configured/tested. The local release script is an optional fallback. See `docs/SECRETS-DESIGN.md`.
+## GitHub Actions / deployment
 
-**With more time:** implement migration job and PostgreSQL GRANTs, WIF CI, production secret seeding, HA/DR, network hardening, monitoring and automated validation.
+1. A reviewed push to `main` starts [`docker-build.yml`](.github/workflows/docker-build.yml): a dedicated builder SA uses GitHub OIDC Workload Identity Federation and repository-scoped Artifact Registry Writer. It embeds `github.sha` in the image and uploads the resulting SHA/digest manifest.
+2. [`cloudrun-deploy.yml`](.github/workflows/cloudrun-deploy.yml) runs after the successful build, verifies the upstream SHA and manifest, then deploys that **digest** to the existing Cloud Run service. It uses a **different** WIF provider and service account with Cloud Run Developer on the specific service, service-account User on the API runtime identity, and Artifact Registry Reader on the repository.
+3. Deployment is accepted only after `/health` returns HTTP 200 and the expected SHA, `db=ok`, `secret=ok`. Both workflows were observed successful on 2026-11-11. No GitHub Actions job runs `terraform apply`.
+4. GitHub Ruleset `protect main` is active and requires pull requests, blocks branch deletion and force pushes, and lists no bypass actors. **It currently targets all branches** (`~ALL`), not just `main`; narrow it to `main` to permit normal feature-branch pushes.
 
+See [CI/CD design](docs/CI-CD.md) and [IAM design](docs/IAM-DESIGN.md).
 
-**First deployment:** Bootstrap creates Artifact Registry **before** any Docker push. The local release script impersonates the deployer for image publish and Terraform, pins the image digest to the commit and writes a plan for human approval. Reviewer `gcp-hr@comm-it.cloud` gets project Viewer after bootstrap; Google Cloud confirmed this identity is a **group**; the bootstrap local input must remain `reviewer_principal_type = "group"`. See `docs/CI-CD.md`.
+## Terraform ownership
 
+- `terraform/bootstrap`: privileged human-run root — identity, WIF trust, Artifact Registry, project IAM and the versioned EU GCS state bucket. Current bootstrap security hardening is tracked by [PR #1](https://github.com/Comeon2022/CommitTask/pull/1).
+- `terraform/poc`: application VPC, networking, private Cloud SQL, Secret Manager, runtime Cloud Run and resource IAM. Its image field is intentionally excluded from Terraform drift reconciliation because immutable image releases are owned by the CI/CD deploy workflow.
+- **Security of Terraform State:** Generated secret payloads remain readable in Terraform state, an explicit PoC limitation. Bootstrap Terraform now controls four legacy GCS bucket roles with **zero members**, retains repository-scoped state access for the deployer/plan SAs, and grants the named bootstrap operator bucket-scoped Storage Admin. The live bucket IAM check on 2026-11-11 confirmed that the four legacy roles were absent. The temporary recovery grant at the project scope must be removed via Terraform and verified with a clean plan.
+- `roles/editor` for the unused Compute Engine default service account is removed by an authoritative Terraform role binding in bootstrap; verify that the project IAM policy remains empty for this role.
 
-**GitHub Docker workflow:** `.github/workflows/docker-build.yml` publishes only the container; no automatic Terraform Apply. First re-apply `terraform/bootstrap` to create `meridian-poc-builder` and its isolated `github-build` WIF provider, then configure non-secret Actions variables with `scripts/configure-build-vars.ps1` and review branch protections. See `docs/CI-CD.md`.
+**Never commit** `terraform.tfvars`, saved `*.tfplan`, state, Google tokens or credentials. Apply bootstrap using the privileged operator, and apply PoC changes only with the approved deployer identity. See [deployment steps](docs/DEPLOY.md).
+
+## Remaining limitations / verification
+
+- The intended developer-triggered Cloud Run migration Job and corresponding PostgreSQL DDL grants are **not implemented**. Developer and migration SAs are architecture scaffolding, not a tested migration path.
+- The proposed `db_secret_reader` Google Group was **not created**. Real secrets should eventually be provisioned outside ordinary Terraform state.
+- `meridian-poc-api` is publicly invokable for this isolated demonstration. Production would need stronger ingress/API protection, monitoring, HA/DR, workload observability and security reviews.
+- The independent PoC Terraform plan previously showed a Cloud Run in-place metadata/scaling diff introduced by `gcloud run services update` (not an image rollback). Do not claim complete PoC drift convergence until rechecked.
+- Final confirmation of temporary project-wide Storage Admin revocation, no remaining default Editor grant, the merged PR, and `terraform plan` convergence is still required after the current security cleanup.
+
+## Submission materials
+
+- [Identity / least privilege](docs/IAM-DESIGN.md)
+- [CI/CD and release process](docs/CI-CD.md)
+- [Secrets design](docs/SECRETS-DESIGN.md)
+- [Region design](docs/REGION-DESIGN.md)
+- [Original clarifications](CLARIFICATIONS.md)
+- [AI usage and verification log](AI-LOG.md)
