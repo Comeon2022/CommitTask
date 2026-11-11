@@ -1,8 +1,8 @@
 # Copy locally to terraform.tfvars (never commit real identities).
-project_id        = "commitask"
-project_number    = "924903658971"
+project_id        = "commitask01"
+project_number    = "238671625358"
 region            = "europe-west1"
-state_bucket_name = "commitask-tfstate-924903658971"
+state_bucket_name = "commitask01-tfstate-238671625358"
 
 # Omit these until actual Google accounts are available.
 # developer_emails = {
