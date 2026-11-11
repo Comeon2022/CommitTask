@@ -52,3 +52,115 @@ resource "google_storage_bucket" "terraform_state" {
 output "state_bucket_name" {
   value = google_storage_bucket.terraform_state.name
 }
+
+# Identity bootstrap is run by an explicitly authorized human administrator.
+# Do not give the regular Terraform deployer project IAM policy write access.
+
+variable "developer_emails" {
+  description = "Map of dev1/dev2/dev3 to real human Google identities; optional until provided."
+  type        = map(string)
+  default     = {}
+  validation {
+    condition     = alltrue([for k in keys(var.developer_emails) : contains(["dev1", "dev2", "dev3"], k)])
+    error_message = "Only dev1, dev2 and dev3 identities are accepted."
+  }
+}
+
+locals {
+  service_accounts = {
+    deployer  = "meridian-poc-deployer"
+    api       = "meridian-poc-api"
+    migration = "meridian-poc-migration"
+    dev1      = "meridian-poc-dev1"
+    dev2      = "meridian-poc-dev2"
+    dev3      = "meridian-poc-dev3"
+  }
+
+  # Each role is narrowly functional, but some are project-scoped predefined
+  # administrator roles. Production should further replace these with custom
+  # roles and split infrastructure ownership. Deliberately no projectIamAdmin.
+  deployer_roles = toset([
+    "roles/compute.networkAdmin",
+    "roles/servicenetworking.networksAdmin",
+    "roles/cloudsql.admin",
+    "roles/run.admin",
+    "roles/artifactregistry.admin",
+    "roles/secretmanager.admin",
+    "roles/serviceusage.serviceUsageAdmin",
+  ])
+
+  sql_runtime_roles = toset([
+    "roles/cloudsql.client",
+    "roles/cloudsql.instanceUser",
+  ])
+}
+
+resource "google_project_service" "iam" {
+  project            = var.project_id
+  service            = "iam.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_service_account" "identity" {
+  for_each     = local.service_accounts
+  account_id   = each.value
+  display_name = "Meridian PoC ${each.key} identity"
+  depends_on   = [google_project_service.iam]
+}
+
+resource "google_project_iam_member" "deployer" {
+  for_each = local.deployer_roles
+  project  = var.project_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.identity["deployer"].email}"
+}
+
+resource "google_service_account_iam_member" "deployer_act_as_api" {
+  service_account_id = google_service_account.identity["api"].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.identity["deployer"].email}"
+}
+
+resource "google_service_account_iam_member" "deployer_act_as_migration" {
+  service_account_id = google_service_account.identity["migration"].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.identity["deployer"].email}"
+}
+
+resource "google_project_iam_member" "runtime_sql" {
+  for_each = {
+    for pair in setproduct(["api", "migration"], local.sql_runtime_roles) :
+    "${pair[0]}-${pair[1]}" => {
+      identity = pair[0]
+      role     = pair[1]
+    }
+  }
+  project = var.project_id
+  role    = each.value.role
+  member  = "serviceAccount:${google_service_account.identity[each.value.identity].email}"
+}
+
+# Each real developer may impersonate ONLY their own developer SA.
+# No SA keys are created. Developer SAs receive no direct Cloud SQL access.
+resource "google_service_account_iam_member" "developer_impersonation" {
+  for_each           = var.developer_emails
+  service_account_id = google_service_account.identity[each.key].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "user:${each.value}"
+}
+
+output "deployer_service_account" {
+  value = google_service_account.identity["deployer"].email
+}
+
+output "api_service_account" {
+  value = google_service_account.identity["api"].email
+}
+
+output "migration_service_account" {
+  value = google_service_account.identity["migration"].email
+}
+
+output "developer_service_accounts" {
+  value = { for k in ["dev1", "dev2", "dev3"] : k => google_service_account.identity[k].email }
+}
