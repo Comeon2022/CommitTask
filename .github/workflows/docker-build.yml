@@ -23,15 +23,15 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       WIF_PROVIDER: ${{ vars.GCP_BUILD_WIF_PROVIDER }}
       BUILDER_SA: ${{ vars.GCP_BUILD_SA }}
-      IMAGE_NAME: europe-west1-docker.pkg.dev/commitask/meridian-poc/api
+      IMAGE_NAME: europe-west1-docker.pkg.dev/commitask01/meridian-poc/api
     steps:
       - name: Check non-secret configuration
         shell: bash
         run: |
           set -euo pipefail
-          test "$PROJECT_ID" = "commitask"
+          test "$PROJECT_ID" = "commitask01"
           test -n "$WIF_PROVIDER"
-          test "$BUILDER_SA" = "meridian-poc-builder@commitask.iam.gserviceaccount.com"
+          test "$BUILDER_SA" = "meridian-poc-builder@commitask01.iam.gserviceaccount.com"
 
       - name: Checkout exact source revision
         uses: actions/checkout@v4
