@@ -86,7 +86,11 @@ resource "google_secret_manager_secret" "provider_token" {
   secret_id = "meridian-poc-provider-token"
 
   replication {
-    auto {}
+    user_managed {
+      replicas {
+        location = "europe-west1"
+      }
+    }
   }
 
   depends_on = [google_project_service.required]
