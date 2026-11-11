@@ -8,7 +8,7 @@
 | Identity | Scope | Intended access |
 | --- | --- | --- |
 | `meridian-poc-deployer` | Terraform only | Functional project-scoped administrators for network, SQL, Run, Artifact Registry, Secret Manager and API enablement; `iam.serviceAccountUser` on the exact runtime SAs. No Owner/Editor/project IAM Admin. |
-| `meridian-poc-api` | Cloud Run service | `cloudsql.client`, `cloudsql.instanceUser`; read only the provider-token secret. Database access uses Cloud SQL IAM DB auth. |
+| `meridian-poc-api` | Cloud Run service | `cloudsql.client`, `cloudsql.instanceUser`; read the provider-token and database-password secrets at runtime for the exercise's two-secret health check (though SQL login uses IAM, not the password). Database access uses Cloud SQL IAM DB auth. |
 | `meridian-poc-migration` | Future migration job | `cloudsql.client`, `cloudsql.instanceUser`; separate database principal. Migration Job is **not implemented yet**. |
 | `meridian-poc-dev1`, `dev2`, `dev3` | Per-human developer identities | No project-wide roles, no Cloud SQL, no secrets. Each real human may impersonate their **own** developer SA only. Job-specific run invocation will be granted when the Job exists. |
 
@@ -35,7 +35,7 @@ IAM login proves identity, **not** database privileges. PostgreSQL `GRANT` for t
 
 ### Conflict with the exercise's literal wording
 
-The exercise asks for **two secrets: database password and third-party API token**. IAM database authentication eliminates the database password, and the current code stores only one synthetic API token in Secret Manager. This is a **known deliberate deviation** from the letter of that requirement. Explain it to reviewers as an architect's alternative, but do not falsely claim the two-secret requirement has been satisfied. If strict compliance is necessary, implement a separate legacy-password DB identity and second secret without allowing the runtime API to use that password (or seek an explicit exception).
+The exercise asks for **two secrets: database password and third-party API token**. Both are now implemented and read by the API per request; the password belongs to a separate built-in PostgreSQL user that the API does **not** use for database login. The API continues to use automatic IAM database authentication. The existing group `db_secret_reader` (real Google Group email supplied as a variable) receives access only to the password secret, while the API SA receives scoped access to both secrets to satisfy the exercise's runtime-read requirement. This is an explicitly documented PoC concession to the exercise, not our preferred production password-handling architecture. See `docs/SECRETS-DESIGN.md`.
 
 ### Outstanding verification
 
