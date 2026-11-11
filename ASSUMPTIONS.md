@@ -85,3 +85,18 @@ These links support general GCP behavior. They do not resolve Meridian's unanswe
 - **Validation:** These changes exist as source configuration only. GCP IAM, Terraform plans, and actual database login are not validated yet.
 
 For detailed rights and rationale see `docs/IAM-DESIGN.md`.
+
+
+---
+
+## Architecture amendment — 2026-11-11: reconcile two mandatory secrets with IAM authentication
+
+**Decision (supersedes the previous one-secret deviation):** Provision two real secrets in GCP Secret Manager: (1) a password for the separate built-in PostgreSQL account `meridian_secret_user`, and (2) a synthetic external provider API token. The Cloud Run API reads **both** secrets per `/health` request under its own runtime SA, but its SQL `SELECT 1` uses **automatic IAM database authentication**, never the stored database password.
+
+**Access decisions:** Give the Cloud Run API SA secret-level `roles/secretmanager.secretAccessor` for both secrets to meet the interview exercise. Give the **existing** Google Group named `db_secret_reader` read access to the DB-password secret only, after its real group email has been supplied; no project-wide secret-access grants. Do not grant developer SAs direct access.
+
+**Rationale:** Preserve IAM-based runtime database access while demonstrating the exact two-secret health contract. The separate password account is valid, not an invented unused string, but should not be used in normal API operations.
+
+**Trade-offs and limitations:** A runtime SA holding access to a password it does not need violates ideal production least privilege and must be explained as a PoC-specific trade-off. Terraform generates both secret values and therefore stores them in the GCS state. Restrict state access; replace Terraform-managed secret value seeding in production. The group is not auto-created as a project IAM object: Google Groups live in Cloud Identity/Workspace and require an actual email address.
+
+**Validation:** The IAM group binding is skipped until `db_secret_reader_group_email` is provided. No GCP deployment or live validation has occurred. Detailed ADR: `docs/SECRETS-DESIGN.md`.
