@@ -1,60 +1,28 @@
-# Meridian Payments — Google Cloud Evaluation
+# Meridian Payments — Google Cloud Architect Exercise
 
-**Candidate:** Lior Karu | **Project:** `commitask01` | **Region:** `europe-west1`  
-**Live Endpoint:** [`https://meridian-poc-api-egkkxtz23a-ew.a.run.app/health`](https://meridian-poc-api-egkkxtz23a-ew.a.run.app/health)  
-**Contract Verification:** HTTP 200 OK — `{"candidate": "Lior Karu", "commit": "...", "db": "ok", "region": "europe-west1", "secret": "ok"}`
+**Status:** Working GCP PoC in `commitask01` / `europe-west1` (2026-11-11). **Not production-ready.** [Live GET /health](https://meridian-poc-api-egkkxtz23a-ew.a.run.app/health) · [Repository](https://github.com/Comeon2022/CommitTask).
 
----
+## Architecture and decisions
+- **Cloud Run** for a minimal stateless HTTP API: lower operational cost/complexity than GKE or VMs. Verified live `/health`: real per-request Cloud SQL `SELECT 1` (`db=ok`), real Secret Manager reads (`secret=ok`), candidate, region and embedded deployed commit. Last evidenced SHA: `8d89261fff66faada4df9a49e25daa8d225d7961`. Check currently deployed SHA when reviewing.
+- **Cloud SQL PostgreSQL 16**, private IP only, auto IAM DB authentication via API service account; dedicated custom VPC, Private Google Access and Cloud Run direct VPC egress (`private-ranges-only`). No public SQL endpoint.
+- **Two PoC secrets** (database password and synthetic provider token) in Secret Manager, read by API runtime SA. SQL login uses IAM rather than this password. Secret **values are also in Terraform state**; not acceptable for production.
+- **Terraform:** separate privileged `terraform/bootstrap` root and application `terraform/poc` root, GCS remote state; bucket access restricted to named operator, deployer SA, plan SA. Default Compute Editor revoked in Terraform configuration; verify project policy after cleanup.
+- **CI/CD:** main push → GitHub WIF builder → immutable Artifact Registry digest → isolated WIF Cloud Run deployer → health assertions. Build and deploy workflows ran successfully. Terraform ignores CI-owned Cloud Run image changes; no GitHub Terraform auto-apply. A GitHub Ruleset enforces PR changes; at last check it also covered non-main branches.
 
-## 1. Architecture & Key Decisions
+## Run / verify
+From Windows PowerShell, follow [deployment commands](docs/DEPLOY.md) for the required `terraform init → validate → plan → apply` sequence using the authorized identity. Smoke check:
+```powershell
+Invoke-RestMethod 'https://meridian-poc-api-egkkxtz23a-ew.a.run.app/health'
+gh run list --repo Comeon2022/CommitTask --limit 5
+```
+Keep the live environment up through review. Do not commit secrets, state, `*.tfplan`, credentials or `terraform.tfvars`.
 
-- **Compute Choice (Cloud Run):** Selected serverless Cloud Run over GKE/GCE. For a single lightweight API evaluation, Cloud Run provides zero-management scaling, built-in TLS, native Direct VPC Egress to private IPs, and minimal idle cost without cluster overhead.
-- **Network Isolation:** Rejected the customer's request to use the `default` VPC. Provisioned a custom VPC (`meridian-poc-vpc`), private subnet, and Private Services Access (PSA) peering for Cloud SQL.
-- **Database & IAM Authentication:** Cloud SQL for PostgreSQL 16 is strictly internal (`ipv4_enabled = false`). Application connects via Cloud SQL Python Connector using **IAM database authentication** (short-lived OAuth tokens); no database password is hardcoded or used by the app.
-- **Secrets Management:** Secret Manager replicates to EU (`europe-west1`) for GDPR data residency. The API reads both the provider token and a built-in DB user password at runtime under its dedicated identity.
-- **CI/CD & Zero Long-Lived Credentials:** Rejected storing service account JSON keys in GitHub Secrets. Configured Workload Identity Federation (WIF) with GitHub Actions OIDC:
-  - Repository-scoped `meridian-poc-builder` for image pushes.
-  - Service-scoped `meridian-poc-ci-deploy` for automated deployment to Cloud Run with live `/health` gate.
-  - Read-only `meridian-poc-plan` for manual main plans.
+## AI use, corrections and time
+**Tool:** ChatGPT GPT-6 (architecture, Terraform, Python API, GitHub Actions and docs). **Rough estimate:** ~80% of initial implementation text drafted with AI assistance; this is an unmeasured judgment, not a code attribution audit. Human operator directed architecture, ran plans/applies, observed failures, verified cloud outputs and approved fixes.
 
----
+**Three real AI corrections/rejections:** (1) Python `pg8000` `SELECT 1` returned `[1]`, not `(1,)`; fixed scalar check. (2) Suggested `gcloud run services describe --v2` is unsupported; inspected actual v1 `spec.template` instead. (3) Removing GCS legacy IAM before granting explicit bucket admin caused `403 storage.buckets.getIamPolicy`; restored access using Terraform and a temporary project grant, then added bucket-scoped operator admin before completing legacy removal. **Exact original-chat transcript references are pending import to `AI-LOG.md`; the current summary is NOT a compliant substitute.**
 
-## 2. How to Run & Verify
+**Time spent:** Active hands-on time was not separately measured. The conversation spans more than five elapsed hours; this exceeds the exercise's five-hour hard-stop window in wall-clock time, and should be disclosed rather than silently claiming compliance.
 
-1. **Bootstrap (run once as human administrator):**
-   ```powershell
-   cd terraform/bootstrap
-   terraform init && terraform apply
-   ```
-2. **Deploy Infrastructure:**
-   ```powershell
-   cd ../poc
-   terraform init -backend-config="bucket=commitask01-tfstate-238671625358" -backend-config="prefix=meridian/poc"
-   terraform apply
-   ```
-3. **CI/CD Pipeline:** Pushing to `main` triggers `.github/workflows/docker-build.yml` followed by `.github/workflows/cloudrun-deploy.yml`, which updates Cloud Run to the immutable image digest and verifies `/health`.
-4. **Endpoint Probe:**
-   ```bash
-   curl -i https://meridian-poc-api-egkkxtz23a-ew.a.run.app/health
-   ```
-
----
-
-## 3. Working With AI & Corrections
-
-- **Tools Used:** ChatGPT (GPT-6) and Antigravity (Claude 3.5 Sonnet / Gemini 1.5 Pro). AI generated ~70% of the initial scaffolding and documentation drafts; all architecture, security boundaries, and debugging were directed by the architect.
-- **Three Critical AI Rejections / Corrections (see `AI-LOG.md`):**
-  1. **Cloud SQL Edition on PG16 (`AI-LOG.md` Session 2, Item 1):** AI specified `tier = "db-f1-micro"` with PostgreSQL 16 without `edition = "ENTERPRISE"`. PG16 defaults to Enterprise Plus, which rejects shared-core tiers. Corrected in `terraform/poc/data.tf`.
-  2. **Privileged PR Plan Security Hole (`AI-LOG.md` Session 2, Item 2):** AI initially generated a GitHub Actions PR plan using the privileged deployer SA. Because PR workflows run untrusted branch code, this could allow arbitrary apply/destruction. Replaced with credential-free PR checks and an isolated, read-only plan identity.
-  3. **Silent DB Health Failure in pg8000 (`AI-LOG.md` Session 2, Item 3):** AI implemented `cursor.fetchone() == (1,)`. In runtime testing, `pg8000` returned a list `[1]`, causing `[1] == (1,)` to silently evaluate to `False` (`"db": "error"`). Corrected to validate scalar `row[0] == 1` and properly manage connection close.
-
----
-
-## 4. Time Spent & With More Time
-
-- **Actual Time Spent:** ~4.5 hours (within the 5-hour hard limit).
-- **With More Time:**
-  - **Developer Migrations:** Fully implement the designed Cloud Run Job (ADR-001) with execute-only permissions for developers.
-  - **Secrets Seeding:** Provision secret values outside Terraform (via KMS/Vault) to avoid storing plaintext passwords in Terraform state.
-  - **Production Ingress:** Place Cloud Run behind Cloud Load Balancing with Cloud Armor WAF and DDoS mitigation.
-  - **HA & DR:** Configure Cloud SQL High Availability (Regional), Point-In-Time Recovery, and `deletion_protection = true`.
+## What remains / what I would do with more time
+The developer-triggered migration Job and DB schema grants are design-only. Production needs stronger public API controls, outbound policy, audit/PCI scoping, HA/DR, logging and externally seeded/rotated secrets. Final project IAM cleanup, Bootstrap no-change plan and remaining Cloud Run metadata drift need verification. See [security gaps](docs/PRODUCTION-SECURITY-GAPS.md), [assumptions](ASSUMPTIONS.md), [clarifications](CLARIFICATIONS.md), [IAM design](docs/IAM-DESIGN.md), [CI/CD design](docs/CI-CD.md). **Submission blocker:** replace [AI-LOG.md](AI-LOG.md) with complete unedited AI session transcripts, redacting credentials only.
