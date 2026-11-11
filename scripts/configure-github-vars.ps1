@@ -2,6 +2,7 @@
 # Run in Windows PowerShell after: gh auth login; gcloud auth login;
 # terraform -chdir=terraform/bootstrap apply (as the authorized bootstrap operator).
 # Does NOT create GCP resources, GitHub Environment, or IAM roles.
+# This configures trusted MAIN-BRANCH plan-only SA; no deployer credentials in CI.
 [CmdletBinding()]
 param(
   [Parameter(Mandatory=$true)][string]$StateBucket,
@@ -13,8 +14,8 @@ $ErrorActionPreference = "Stop"
 $Repository = "Comeon2022/CommitTask"
 $ProjectId = "commitask"
 $ProjectNumber = "924903658971"
-$Deployer = "meridian-poc-deployer@$ProjectId.iam.gserviceaccount.com"
-$Provider = "projects/$ProjectNumber/locations/global/workloadIdentityPools/meridian-github/providers/github-pr"
+$PlanSa = "meridian-poc-plan@$ProjectId.iam.gserviceaccount.com"
+$Provider = "projects/$ProjectNumber/locations/global/workloadIdentityPools/meridian-github/providers/github-plan"
 
 if ($StateBucket -match 'YOUR_|REPLACE|PLACEHOLDER' -or
     $ContainerImage -match 'YOUR_|REPLACE|PLACEHOLDER' -or
@@ -33,13 +34,13 @@ if ($LASTEXITCODE -ne 0) { throw "Run gh auth login first." }
 $ActualId = (& gcloud projects describe $ProjectNumber --format="value(projectId)").Trim()
 if ($LASTEXITCODE -ne 0 -or $ActualId -ne $ProjectId) { throw "Project ID/number mismatch or GCP access denied." }
 # Ensure WIF exists. Names can be constructed before creation, but that isn't proof of existence.
-& gcloud iam workload-identity-pools providers describe github-pr --project=$ProjectId --location=global --workload-identity-pool=meridian-github --format="value(name)" | Out-Null
+& gcloud iam workload-identity-pools providers describe github-plan --project=$ProjectId --location=global --workload-identity-pool=meridian-github --format="value(name)" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Run/bootstrap Terraform WIF provider before configuring variables." }
 
 $Vars = @{
   GCP_PROJECT_ID = $ProjectId
   GCP_WIF_PROVIDER = $Provider
-  GCP_DEPLOYER_SA = $Deployer
+  GCP_PLAN_SA = $PlanSa
   GCS_TF_STATE_BUCKET = $StateBucket
   TF_CANDIDATE_FULL_NAME = $CandidateFullName
   TF_CONTAINER_IMAGE = $ContainerImage
