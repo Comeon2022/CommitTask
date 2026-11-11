@@ -107,7 +107,7 @@ We propose a Cloud Identity/Google Workspace group named `db_secret_reader` for 
 
 ## GitHub Actions
 
-CI configuration and the required GitHub repository variables and `gcp-plan` environment are described in `docs/CI-CD.md`. The current workflow uses Workload Identity Federation and never stores a JSON key.
+The current GitHub Actions PR workflow performs **credential-free Terraform formatting and validation only**. Full-write CI OIDC impersonation has been removed. Plans and applies are operator-controlled until a secure separate CI identity is introduced. See `docs/CI-CD.md`.
 
 
 ## Granting Commit reviewer access
@@ -119,3 +119,14 @@ gcloud projects get-iam-policy commitask --flatten="bindings[].members" --filter
 ```
 
 The command checks policy membership; it is not an authorization simulator. Confirm the external user can actually access the project with their Google identity and only add service-specific read roles if required for the review.
+
+
+## Release provenance — avoid manual SHA/image drift
+
+After bootstrapping the registry, from repository root invoke:
+
+```powershell
+.\\scripts\\prepare-release.ps1 -CandidateFullName "YOUR_ACTUAL_NAME" `\n  -StateBucket "YOUR_REAL_STATE_BUCKET"
+```
+
+This builds the exact checked-out source with a Git SHA label, pushes the image, resolves the immutable digest, and writes a Terraform plan containing **both** the image digest and the short Git SHA. It does not automatically apply. Review and apply the plan intentionally. This replaces the manual per-release SHA/image editing in the earlier instructions. Build requires Docker and Artifact Registry push permissions; run the script only after registry bootstrap.
