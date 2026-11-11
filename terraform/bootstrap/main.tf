@@ -34,9 +34,8 @@ provider "google" {
   region  = var.region
 }
 
-# Recover the missing API through Terraform only (never gcloud services enable).
-# The bootstrap recovery plan targets this resource once, before importing
-# existing IAM and project resources into the reconstructed local state.
+# Manage Cloud Resource Manager API through Terraform in the fresh project.
+# No APIs are enabled with gcloud CLI.
 resource "google_project_service" "cloudresourcemanager" {
   project            = var.project_id
   service            = "cloudresourcemanager.googleapis.com"
@@ -133,12 +132,11 @@ resource "google_storage_bucket_iam_member" "deployer_state" {
 # Interview reviewer gets project-wide read-only visibility after bootstrap.
 # Basic Viewer is intentionally not Secret Manager Secret Accessor, and is not
 # Storage Object Viewer on the Terraform state bucket.
-# Reviewer email type cannot be inferred from its address. An administrator
-# must confirm whether this is a Google user or a Google Group before apply.
+# The reviewer identity was previously confirmed as a Google Group by IAM API.
 variable "reviewer_principal_type" {
   type        = string
   description = "Confirmed identity type for gcp-hr@comm-it.cloud: user or group."
-  default     = "user"
+  default     = "group"
 
   validation {
     condition     = contains(["user", "group"], var.reviewer_principal_type)
