@@ -34,6 +34,15 @@ provider "google" {
   region  = var.region
 }
 
+# Recover the missing API through Terraform only (never gcloud services enable).
+# The bootstrap recovery plan targets this resource once, before importing
+# existing IAM and project resources into the reconstructed local state.
+resource "google_project_service" "cloudresourcemanager" {
+  project            = var.project_id
+  service            = "cloudresourcemanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "storage" {
   project            = var.project_id
   service            = "storage.googleapis.com"
