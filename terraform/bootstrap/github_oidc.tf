@@ -101,3 +101,47 @@ output "github_workload_identity_provider" {
 }
 
 # WIF is bound ONLY to plan-only SA; there is no CI impersonation of deployer.
+
+# Independent GitHub image-build trust. This identity must NOT access Terraform
+# state or deploy Cloud Run; its only permission is repository-scoped image push.
+resource "google_iam_workload_identity_pool_provider" "github_main_build" {
+  project                            = var.project_id
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-build"
+  display_name                       = "CommitTask main image publisher"
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+    # Unique mapping: plan provider does not issue this attribute.
+    "attribute.pipeline"   = "'main-docker-build'"
+  }
+
+  # Authorize only the exact workflow file on protected main, on push.
+  attribute_condition = "assertion.repository_id == '${var.github_repository_id}' && assertion.repository_owner_id == '${var.github_owner_id}' && assertion.repository == '${var.github_repository_full_name}' && assertion.ref == 'refs/heads/main' && assertion.event_name == 'push' && assertion.workflow_ref == '${var.github_repository_full_name}/.github/workflows/docker-build.yml@refs/heads/main'"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+}
+
+resource "google_service_account" "ci_builder" {
+  project      = var.project_id
+  account_id   = "meridian-poc-builder"
+  display_name = "Meridian GitHub image publisher (Artifact Registry only)"
+  depends_on   = [google_project_service.iam]
+}
+
+resource "google_service_account_iam_member" "github_main_build" {
+  service_account_id = google_service_account.ci_builder.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.pipeline/main-docker-build"
+}
+
+output "ci_builder_service_account" {
+  value = google_service_account.ci_builder.email
+}
+
+output "github_build_workload_identity_provider" {
+  value = google_iam_workload_identity_pool_provider.github_main_build.name
+}
