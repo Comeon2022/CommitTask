@@ -51,3 +51,8 @@ Google IAM supports `group:GROUP_EMAIL` on a secret resource. A display name lik
 6. Confirm secret payloads do not appear in Cloud Run logs; secure Terraform state.
 
 See `CLARIFICATIONS.md`, `ASSUMPTIONS.md`, `docs/IAM-DESIGN.md`.
+
+
+## Residency amendment — 2026-11-11
+
+Both global Secret Manager resources now use **user-managed replication with one replica in `europe-west1` (Belgium)**. The former `replication { auto {} }` allowed secret payload replication outside Europe. This is a documented EU-location assumption for the evaluation, not a formal GDPR/PCI compliance certification. The region is intentionally fixed to the selected EU PoC region until the customer approves a different data-residency plan. Replication location is immutable after secret creation; no deployment has occurred yet.
