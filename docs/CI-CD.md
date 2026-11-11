@@ -1,6 +1,6 @@
 # CI/CD preparation — GitHub Actions, not GitLab CI
 
-**Status:** Code committed. No GCP project, WIF provider, or pipeline execution has been verified.
+**Status:** GCP project identifiers supplied by operator: **Project ID `commitask`**, **Project Number `924903658971`**. Cloud bootstrap, WIF creation and pipeline execution have NOT been verified.
 
 This exercise explicitly uses **GitHub Actions**, and the repository is `Comeon2022/CommitTask` on GitHub. The workflow is at `.github/workflows/terraform-pr.yml`. If the team decides to migrate to GitLab later, this must be redesigned for GitLab's OIDC issuer, project claims and `.gitlab-ci.yml`; the current GitHub workflow cannot run in GitLab unchanged.
 
@@ -22,9 +22,9 @@ This exercise explicitly uses **GitHub Actions**, and the repository is `Comeon2
 
 | GitHub Actions variable | Purpose |
 | --- | --- |
-| `GCP_PROJECT_ID` | Existing GCP project ID |
-| `GCP_WIF_PROVIDER` | Full WIF provider resource name from bootstrap output |
-| `GCP_DEPLOYER_SA` | `meridian-poc-deployer@PROJECT_ID.iam.gserviceaccount.com` |
+| `GCP_PROJECT_ID` | `commitask` |
+| `GCP_WIF_PROVIDER` | After bootstrap, `projects/924903658971/locations/global/workloadIdentityPools/meridian-github/providers/github-pr` |
+| `GCP_DEPLOYER_SA` | `meridian-poc-deployer@commitask.iam.gserviceaccount.com` |
 | `GCS_TF_STATE_BUCKET` | Globally unique state bucket created by bootstrap |
 | `TF_CANDIDATE_FULL_NAME` | Exact interview candidate name |
 | `TF_CONTAINER_IMAGE` | Built/pushed Artifact Registry image reference (ideally digest) |
@@ -47,3 +47,16 @@ References:
 - https://github.com/google-github-actions/auth
 - https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines
 - https://developer.hashicorp.com/terraform/language/backend/gcs
+
+
+## Known project identities and safe local setup
+
+The GitHub Actions **repository variables are not created by committing files**. The authenticated GitHub connector currently does not expose repository Actions variable or Environment management, so no change to GitHub Settings has been made here.
+
+Once bootstrap and container build/push are complete, use:
+
+```powershell
+.\\scripts\\configure-github-vars.ps1 -StateBucket "ACTUAL_BUCKET_NAME" `\n  -CandidateFullName "ACTUAL_COMMIT_NAME" `\n  -ContainerImage "europe-west1-docker.pkg.dev/commitask/meridian-poc/api@sha256:ACTUAL_DIGEST" `\n  -DeployedCommit "ACTUAL_SHORT_GIT_SHA"
+```
+
+This script checks the project ID/number pairing and existence of the WIF provider, then writes **non-secret identifiers** using `gh variable set`. Create the protected `gcp-plan` environment via GitHub Settings before running authenticated plans. The Project Number is used in the WIF provider resource path; the Project ID is used in email and Artifact Registry references.
