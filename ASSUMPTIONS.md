@@ -169,3 +169,16 @@ The Commit exercise requires Viewer access for `gcp-hr@comm-it.cloud`. To preser
 5. **Root container:** Added a non-root `USER 10001:10001` to the Dockerfile. Actual Docker build/run verification remains pending.
 
 This amendment supersedes previous text claiming PR Terraform plan/OIDC deployer impersonation is active. `CLARIFICATIONS.md` is not modified.
+
+
+---
+
+## Infrastructure/CI review — 2026-11-11: latest corrections
+
+- **First image push:** The Artifact Registry repository was incorrectly defined in the PoC root and did not exist when `scripts/prepare-release.ps1` attempted to push. The registry is now provisioned in `terraform/bootstrap/artifact_registry.tf` with the regional root identity and a repository-specific Writer grant to the deployer. Removed the PoC registry resource and changed its output to a computed repository URL. No first-run `terraform -target` is needed.
+- **Keyless local execution:** Release script now verifies the registry and token impersonation, and sets `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` and `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT` for the deployer. The GCS backend is initialized with `impersonate_service_account` explicitly. No JSON key. Success remains unverified until run.
+- **Plan-only CI:** A separate `meridian-poc-plan` SA gets project Viewer and IAM Security Reviewer plus state-bucket Object Viewer, and WIF impersonation ONLY on that SA. A manual, gated `workflow_dispatch` on protected `main` runs a read-only plan; PR validation remains credential-free. This is deliberately **not a PR plan**: the state contains generated secrets and even read-only state access can expose them. We prefer the narrower trusted-main flow over exposing state to untrusted PR code.
+- **WIF cleanup:** Renamed the provider resource and provider ID from misleading PR names to trusted plan names (`github_main_plan` / `github-plan`); corrected comments and GitHub setup script.
+- **Reviewer identity:** The external email `gcp-hr@comm-it.cloud` has not been confirmed as a directory user or group. New `reviewer_principal_type` input chooses `user` or `group`; default is user but the operator MUST confirm it before apply, to avoid a broken IAM binding.
+
+No Terraform validation, cloud apply, image build, or CI job success is claimed. `CLARIFICATIONS.md` remains unchanged.
