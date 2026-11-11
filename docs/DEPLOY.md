@@ -20,7 +20,7 @@ gcloud config set project $ProjectId
 cd terraform/bootstrap
 terraform init
 terraform plan -var="project_id=$ProjectId" -var="state_bucket_name=$Bucket"
-terraform apply -var="project_id=$ProjectId" -var="state_bucket_name=$Bucket"
+terraform apply -var="project_id=$ProjectId" -var="state_bucket_name=$Bucket" -var="terraform_operator_email=YOUR_USER@YOUR_DOMAIN"
 terraform output deployer_service_account
 terraform output api_service_account
 terraform output developer_service_accounts
@@ -28,7 +28,7 @@ terraform output developer_service_accounts
 
 Bootstrap grants functional roles to the deployer and creates API, migration and three developer SAs. Human developer identities are optional until actual emails are supplied via `developer_emails`. The bootstrap creates a **temporary local state**: keep it secured, do not commit it, and migrate it to protected remote storage as a separate controlled step. The GCS bucket for the PoC is versioned, EU-located, and private.
 
-**Bootstrap administrator must grant the human/CI deployment principal `roles/iam.serviceAccountTokenCreator` on the deployer SA**, not project-wide. In Google Cloud this IAM policy can be managed using the administrator's bootstrap process; do not give the deployer permission to grant itself project-level IAM. The deployer SA does not use a JSON key.
+**Bootstrap now includes an optional `terraform_operator_email` input.** Set this to the human Google account running Terraform. Bootstrap binds `roles/iam.serviceAccountTokenCreator` **only on** `meridian-poc-deployer`, not at project scope. If left empty, nobody gets local impersonation through this Terraform resource; local runs require a separate authorized IAM binding. The deployer SA does not use a JSON key.
 
 ## Step 2 — initialize the PoC under short-lived SA impersonation
 
