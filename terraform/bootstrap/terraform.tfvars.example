@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars locally. State bucket names must be globally unique.
+project_id        = "YOUR_GCP_PROJECT_ID"
+region            = "europe-west1"
+state_bucket_name = "YOUR_GLOBALLY_UNIQUE_GCS_BUCKET_NAME"
