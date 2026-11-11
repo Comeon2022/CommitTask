@@ -152,3 +152,52 @@ output "ci_builder_service_account" {
 output "github_build_workload_identity_provider" {
   value = google_iam_workload_identity_pool_provider.github_main_build.name
 }
+
+# Independent GitHub Cloud Run deployer identity. Build cannot impersonate it.
+# The same workflow can trigger two jobs, but each authenticates against a
+# different provider/SA, so the builder's short-lived token cannot deploy.
+resource "google_service_account" "ci_cloudrun_deployer" {
+  project      = var.project_id
+  account_id   = "meridian-poc-ci-deploy"
+  display_name = "Meridian CI deploy to existing API service only"
+  depends_on   = [google_project_service.iam]
+}
+
+resource "google_iam_workload_identity_pool_provider" "github_main_deploy" {
+  project                            = var.project_id
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-deploy"
+  display_name                       = "CommitTask main Cloud Run deployment"
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+    "attribute.pipeline"   = "'main-cloudrun-deploy'"
+  }
+
+  attribute_condition = "assertion.repository_id == '${var.github_repository_id}' && assertion.repository_owner_id == '${var.github_owner_id}' && assertion.repository == '${var.github_repository_full_name}' && assertion.ref == 'refs/heads/main' && assertion.event_name == 'push' && assertion.workflow_ref == '${var.github_repository_full_name}/.github/workflows/docker-build.yml@refs/heads/main'"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+}
+
+resource "google_service_account_iam_member" "github_main_deploy" {
+  service_account_id = google_service_account.ci_cloudrun_deployer.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.pipeline/main-cloudrun-deploy"
+}
+
+# Grant only the right to attach this one runtime identity, never other SAs.
+resource "google_service_account_iam_member" "ci_deploy_act_as_api" {
+  service_account_id = google_service_account.identity["api"].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.ci_cloudrun_deployer.email}"
+}
+
+output "ci_cloudrun_deployer_service_account" {
+  value = google_service_account.ci_cloudrun_deployer.email
+}
+output "github_deploy_workload_identity_provider" {
+  value = google_iam_workload_identity_pool_provider.github_main_deploy.name
+}
