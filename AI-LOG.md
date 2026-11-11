@@ -1,5 +1,12 @@
 # AI-LOG.md — Commit Google Cloud Architect Interview Exercise
 
+## Source conversation links and transcript completeness
+
+- Original ChatGPT session (account access): https://chatgpt.com/c/6af47a8e-8eac-83ed-b965-40dcc4e6fcbb
+- Shared session snapshot: https://chatgpt.com/share/6af479c1-ec48-83ed-9099-36e69d7b2d55
+- Partial browser HTML exports were inspected. The later snapshot contained 12 user messages and only 6 complete AI responses. These links and exports **do not satisfy** the exercise requirement to store every unedited AI exchange in this file. Credentials and keys may be redacted; missing assistant messages must not be fabricated.
+
+
 > **INCOMPLETE TRANSCRIPT — ACTION REQUIRED BEFORE SUBMISSION**
 >
 > This file records the available user prompts and an exact copy of the draft email produced in the current ChatGPT conversation. It is **not** a complete verbatim export of every assistant response. The earlier assistant responses included a detailed exercise analysis and a Hebrew breakdown of the clarification questions; their full original text must be copied directly from the ChatGPT conversation before submission.
