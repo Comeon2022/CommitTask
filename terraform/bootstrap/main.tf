@@ -123,6 +123,26 @@ resource "google_project_iam_member" "deployer" {
   member   = "serviceAccount:${google_service_account.identity["deployer"].email}"
 }
 
+# Optional human operator: bootstrap administrator binds one named user
+# to the deployer SA, not to every SA in the project.
+variable "terraform_operator_email" {
+  type        = string
+  description = "Existing human Google identity authorized to impersonate the deployer SA. Set during bootstrap."
+  default     = ""
+
+  validation {
+    condition     = var.terraform_operator_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.terraform_operator_email))
+    error_message = "Specify a valid Google account email or leave empty until known."
+  }
+}
+
+resource "google_service_account_iam_member" "terraform_operator_token_creator" {
+  count              = var.terraform_operator_email == "" ? 0 : 1
+  service_account_id = google_service_account.identity["deployer"].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "user:${var.terraform_operator_email}"
+}
+
 resource "google_service_account_iam_member" "deployer_act_as_api" {
   service_account_id = google_service_account.identity["api"].name
   role               = "roles/iam.serviceAccountUser"
