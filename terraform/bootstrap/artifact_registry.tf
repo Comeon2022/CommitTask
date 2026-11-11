@@ -37,3 +37,14 @@ resource "google_artifact_registry_repository_iam_member" "ci_deploy_image_read"
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${google_service_account.ci_cloudrun_deployer.email}"
 }
+
+# Terraform infra deployer must be able to resolve the immutable image when
+# updating the existing Cloud Run service, even for non-image template changes.
+# Grant read-only access on this one repository; never restore Writer.
+resource "google_artifact_registry_repository_iam_member" "terraform_deployer_image_read" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.api.location
+  repository = google_artifact_registry_repository.api.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.identity["deployer"].email}"
+}
