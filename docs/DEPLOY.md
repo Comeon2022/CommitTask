@@ -26,7 +26,7 @@ terraform output api_service_account
 terraform output developer_service_accounts
 ```
 
-Bootstrap grants functional roles to the deployer and creates API, migration and three developer SAs. Human developer identities are optional until actual emails are supplied via `developer_emails`. The bootstrap creates a **temporary local state**: keep it secured, do not commit it, and migrate it to protected remote storage as a separate controlled step. The GCS bucket for the PoC is versioned, EU-located, and private.
+Bootstrap grants functional roles to the deployer and creates API, migration and three developer SAs. Human developer identities are optional until actual emails are supplied via `developer_emails`. The bootstrap creates a **temporary local state**: keep it secured, do not commit it, and migrate it to protected remote storage as a separate controlled step. The GCS bucket for the PoC is versioned, **single-region `europe-west1`**, and private. Both Terraform roots reject any other region. See `docs/REGION-DESIGN.md` for global GCP exceptions.
 
 **Bootstrap now includes an optional `terraform_operator_email` input.** Set this to the human Google account running Terraform. Bootstrap binds `roles/iam.serviceAccountTokenCreator` **only on** `meridian-poc-deployer`, not at project scope. If left empty, nobody gets local impersonation through this Terraform resource; local runs require a separate authorized IAM binding. The deployer SA does not use a JSON key.
 
