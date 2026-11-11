@@ -1,65 +1,51 @@
-# CI/CD preparation — GitHub Actions, not GitLab CI
+# CI/CD security decision — 2026-11-11
 
-**Status:** GCP project identifiers supplied by operator: **Project ID `commitask`**, **Project Number `924903658971`**. Cloud bootstrap, WIF creation and pipeline execution have NOT been verified.
+**Status:** Remediated in GitHub source; no GCP bootstrap, CI execution or Terraform plan has been validated.
 
-This exercise explicitly uses **GitHub Actions**, and the repository is `Comeon2022/CommitTask` on GitHub. The workflow is at `.github/workflows/terraform-pr.yml`. If the team decides to migrate to GitLab later, this must be redesigned for GitLab's OIDC issuer, project claims and `.gitlab-ci.yml`; the current GitHub workflow cannot run in GitLab unchanged.
+## Active pull-request workflow
 
-## Design
+`.github/workflows/terraform-pr.yml` now runs **credential-free**:
+- `terraform fmt -check -recursive`
+- `terraform init -backend=false` and `terraform validate` on bootstrap and PoC
+- Repository token has only `contents: read`. No OIDC, secret access, deployer impersonation, plan or apply.
 
-- PR `validate` job: `terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate` for both roots. No cloud credentials.
-- PR `plan` job: **same-repository PRs only**; uses OIDC via `google-github-actions/auth@v3`, impersonates `meridian-poc-deployer`, initializes the existing GCS state backend, and runs `terraform plan -lock=false`.
-- No `terraform apply` in GitHub Actions. Bootstrap and first deployments are operator-driven until tested.
-- WIF trust is scoped to GitHub immutable repository ID **1453727041**, owner ID **104059889**, and PR event. The Terraform provider name is emitted by `terraform/bootstrap` as `github_workload_identity_provider`.
-- The `gcp-plan` GitHub Environment **must be created and restricted to approved maintainers as required reviewers** before enabling the cloud plan job. GitHub environment protection availability depends on repository/plan. The workflow itself cannot create that policy.
-- This is a PoC tradeoff: the PR `plan` uses the infrastructure deployer SA with write-capable roles. A production pipeline should have a separate `terraform-plan` identity with read-only resource permissions and carefully scoped GCS state access. Do not allow untrusted PR authors to execute or modify authenticated jobs.
+**Why:** A PR author who can change the workflow could insert an `apply` or arbitrary cloud commands. The old workflow made its `plan` job run as a full-write infrastructure deployer. A GitHub Environment is not a substitute for separating that identity from untrusted PR code. This risk is especially important in the public repository.
 
-## Setup after the GCP project exists
+## Workload Identity Federation source
 
-1. Run **bootstrap Terraform** using a privileged human administrator. Bootstrap enables IAM/ST​S/IAM Credentials, creates identities and role bindings, and creates a GitHub WIF provider.
-2. Record `terraform output github_workload_identity_provider`; its path contains the **numeric GCP project number**, not merely the project ID.
-3. Configure the protected GitHub Environment `gcp-plan` under repository Settings -> Environments. Add required reviewers and restrict who can approve.
-4. In repository Settings -> Secrets and variables -> Actions -> **Variables**, configure the following (these are identifiers, **not** credentials):
+`terraform/bootstrap/github_oidc.tf` now declares three parameters:
+- `github_repository_full_name`
+- `github_repository_id`
+- `github_owner_id`
 
-| GitHub Actions variable | Purpose |
-| --- | --- |
-| `GCP_PROJECT_ID` | `commitask` |
-| `GCP_WIF_PROVIDER` | After bootstrap, `projects/924903658971/locations/global/workloadIdentityPools/meridian-github/providers/github-pr` |
-| `GCP_DEPLOYER_SA` | `meridian-poc-deployer@commitask.iam.gserviceaccount.com` |
-| `GCS_TF_STATE_BUCKET` | Globally unique state bucket created by bootstrap |
-| `TF_CANDIDATE_FULL_NAME` | Exact interview candidate name |
-| `TF_CONTAINER_IMAGE` | Built/pushed Artifact Registry image reference (ideally digest) |
-| `TF_DEPLOYED_COMMIT` | Real short source SHA corresponding to the image |
+The provider checks immutable repository/owner IDs plus repository name, `refs/heads/main`, and `workflow_dispatch`. It **does not** have any `roles/iam.workloadIdentityUser` binding to the full-write deployer or another SA. A provider without an impersonation grant cannot, by itself, deploy infrastructure.
 
-5. Initialize PoC state and make the *first deployment* using `docs/DEPLOY.md`; PR plans can then inspect existing state.
-6. Open an internal PR changing Terraform; confirm validate passes and, after environment approval, plan completes. Open a PR from a fork to confirm the authenticated job is skipped.
-7. Keep sensitive plan outputs private: Terraform plans can include secret-related diffs. **Do not upload plaintext plan artifacts or post raw plans to public PR comments.**
+Repository identities are supplied in `terraform/bootstrap/terraform.tfvars.example`. The names/IDs must be checked again if the repository is transferred. Do not take identity or trust parameters from an untrusted PR.
 
-## Current limits
+## Terraform plan / apply during evaluation
 
-- The original exercise requires keeping full AI conversation transcripts in `AI-LOG.md`. That is not completed here.
-- This pipeline depends on GCP and GitHub Environment configuration; neither is presently verified.
-- `terraform plan -lock=false` skips state locking: acceptable for a read-only PR plan in this PoC, **not** for applies.
-- GitHub Actions `pull_request` workflow changes from trusted same-repository branches need code review. Do not enable the cloud plan job for arbitrary contributors.
-- `terraform validate` and formatting checks still need an actual run; failures must be corrected before submission.
-- Avoid GCP SA JSON keys in GitHub secrets. Workload Identity Federation is the intended authentication method.
+Until a separate plan-only identity and protected workflow are implemented, run plans locally as an authorized operator impersonating the deployer SA as documented in `docs/DEPLOY.md`. For first deployment, manually inspect `terraform plan` and `terraform apply`. No service-account JSON keys are used.
 
-References:
-- https://github.com/google-github-actions/auth
-- https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines
-- https://developer.hashicorp.com/terraform/language/backend/gcs
+The long-term CI split should be:
+1. Untrusted PRs: static checks only.
+2. Approved read-only plan from trusted code: dedicated `terraform-plan` SA, carefully scoped to the required read APIs and state access.
+3. Deploy from protected default branch/environment: separate deployer SA, limited to reviewed code and gated approval.
 
+**Security caveat:** Our state currently contains Terraform-generated secrets; even a read-only plan SA with state-object read access may be able to extract them. Solve secret-value seeding before allowing arbitrary developers to view real plans or state.
 
-## Known project identities and safe local setup
+## Release image / SHA consistency
 
-The GitHub Actions **repository variables are not created by committing files**. The authenticated GitHub connector currently does not expose repository Actions variable or Environment management, so no change to GitHub Settings has been made here.
+`scripts/prepare-release.ps1` reads the checked-out `git rev-parse --short=7 HEAD`, builds with an OCI revision label, pushes to Artifact Registry, resolves the immutable image digest from Docker, and generates a saved Terraform plan setting both `deployed_commit` and `container_image` together. It intentionally does **not** auto-apply. Plans and source commits must be reviewed.
 
-Once bootstrap and container build/push are complete, use:
+The Terraform variables still exist for explicit auditability; the script reduces human drift rather than cryptographically attesting that the container contents match a commit. Production should use controlled, reproducible builds, provenance/signatures and deployment by digest.
 
-```powershell
-.\scripts\configure-github-vars.ps1 -StateBucket "ACTUAL_BUCKET_NAME" `
-  -CandidateFullName "ACTUAL_COMMIT_NAME" `
-  -ContainerImage "europe-west1-docker.pkg.dev/commitask/meridian-poc/api@sha256:ACTUAL_DIGEST" `
-  -DeployedCommit "ACTUAL_SHORT_GIT_SHA"
-```
+## Known limitations
 
-This script checks the project ID/number pairing and existence of the WIF provider, then writes **non-secret identifiers** using `gh variable set`. Create the protected `gcp-plan` environment via GitHub Settings before running authenticated plans. The Project Number is used in the WIF provider resource path; the Project ID is used in email and Artifact Registry references.
+- The GitHub Actions validation job has not been executed successfully.
+- GCP/GitHub Workload Identity Federation has not been applied; no CI cloud privileges are active from this Terraform source.
+- The container image has not been built or pushed.
+- `scripts/prepare-release.ps1` requires PowerShell, Docker, Git, gcloud and Terraform and must be tested in the operator's workstation.
+- GitHub environments, branch protections and optional plan-only CI identity require a separate setup before enabling privileged automation.
+- The verbatim `AI-LOG.md` is still incomplete.
+
+References: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions ; https://docs.cloud.google.com/iam/docs/best-practices-for-using-workload-identity-federation
