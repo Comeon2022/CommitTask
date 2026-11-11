@@ -100,3 +100,16 @@ For detailed rights and rationale see `docs/IAM-DESIGN.md`.
 **Trade-offs and limitations:** A runtime SA holding access to a password it does not need violates ideal production least privilege and must be explained as a PoC-specific trade-off. Terraform generates both secret values and therefore stores them in the GCS state. Restrict state access; replace Terraform-managed secret value seeding in production. The group is not auto-created as a project IAM object: Google Groups live in Cloud Identity/Workspace and require an actual email address.
 
 **Validation:** The IAM group binding is skipped until `db_secret_reader_group_email` is provided. No GCP deployment or live validation has occurred. Detailed ADR: `docs/SECRETS-DESIGN.md`.
+
+
+---
+
+## Amendment — 2026-11-11: defer `db_secret_reader` until directory provisioning
+
+The idea of a selected-users `db_secret_reader` Google Group is retained for a future production-shaped permission model but **is not implemented** in this PoC. The earlier conditional Terraform group binding and variable have been removed to avoid suggesting that a nonexistent directory group is active.
+
+Once the organization has provisioned the real Cloud Identity/Workspace group and validated membership, a reviewed Terraform change could grant `roles/secretmanager.secretAccessor` to that group's actual email **on the DB-password secret only**. It must not grant project-wide Secret Manager access or database connectivity. The Cloud Run SA's two read permissions remain for the mandatory interview health check.
+
+## Amendment — 2026-11-11: GitHub Actions rather than GitLab CI
+
+The actual repository is `Comeon2022/CommitTask` on GitHub, and the original exercise specifies GitHub Actions. Therefore the PoC adds a GitHub Actions PR validation / plan workflow and a Terraform-managed GitHub OIDC Workload Identity Federation provider. This CI workflow is **not yet operational**: GCP project, bootstrap, repository variables and protected GitHub environment remain to be configured. GitLab CI would require a separate GitLab OIDC trust configuration and GitLab project.
