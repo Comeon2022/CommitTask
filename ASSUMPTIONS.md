@@ -149,3 +149,10 @@ Terraform State GCS is **reverted to `EU` multi-region**, a deliberate **excepti
 The original customer mentioned prospective US customers, **not** a requirement to store data in the US. Any future US deployment requires a new approved location/residency decision and migration approach.
 
 The separate independent Terraform roots each validate the same approved region list. This is intentional duplication, to be kept synchronized in code reviews. See `docs/REGION-DESIGN.md`. No deployment has been performed.
+
+
+---
+
+## Interview reviewer access — 2026-11-11
+
+The Commit exercise requires Viewer access for `gcp-hr@comm-it.cloud`. To preserve least privilege, the privileged `terraform/bootstrap` root grants this exact user `roles/viewer` at the project `commitask` level. Do not add secret payload access or Terraform state object read roles: state contains both generated secret values. The IAM binding is **defined in source only** pending bootstrap apply and verification.
