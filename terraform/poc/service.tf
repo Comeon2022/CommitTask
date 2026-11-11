@@ -135,5 +135,5 @@ output "health_url" {
 }
 
 output "artifact_registry_repository" {
-  value = google_artifact_registry_repository.api.name
+  value = "${var.region}-docker.pkg.dev/${var.project_id}/meridian-poc"
 }
