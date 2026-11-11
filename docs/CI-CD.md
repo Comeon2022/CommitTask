@@ -62,3 +62,12 @@ After bootstrap and first image publishing, run `scripts/configure-github-vars.p
 - Confirm service account role and GCS backend read paths by a real plan.
 - Reviewer `gcp-hr@comm-it.cloud` may be a **user or Google Group**; the type cannot be inferred from email. Bootstrap now has `reviewer_principal_type`, default `user`, and must be set to `group` if directory ownership confirms it is a group.
 - Document AI corrections in the full original conversation transcript before handing over.
+
+
+## Review of service account lookups and Secret Manager refresh — 2026-11-11
+
+**Deployer IAM:** The deployer already has `roles/iam.serviceAccountUser` directly on both the API and migration SAs in `terraform/bootstrap/main.tf`. Google's predefined role includes `iam.serviceAccounts.get` for those identities. Therefore the `data.google_service_account` calls should be authorized; adding project-wide `roles/iam.serviceAccountViewer` is unnecessary. This must still be verified by an impersonated Terraform plan.
+
+**Read-only CI plan:** `google_secret_manager_secret_version` resources may require `secretmanager.versions.access` when Terraform refreshes them. The separate plan-only SA deliberately does **not** have this permission. The trusted-main workflow now calls `terraform plan -refresh=false` to compare configuration with saved state without attempting a normal refresh of managed Secret Manager versions. This is a **state-based plan only**, not drift detection, and may not work if a provider schema/state migration requires refresh. Other Terraform data sources may still be read during planning. Verify behavior with a real GitHub Actions run; do not imply the plan has already passed.
+
+**Security limitation:** Because the current Terraform state includes generated secret values, the plan SA's bucket-level Object Viewer already represents sensitive state access. A long-term solution is to seed secrets outside Terraform or use properly supported write-only secret inputs and segregated state, and only then enable richer CI refresh or PR plans. Do not grant Secret Accessor merely to suppress a CI error.
