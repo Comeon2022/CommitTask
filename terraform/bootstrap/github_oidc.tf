@@ -167,7 +167,7 @@ resource "google_iam_workload_identity_pool_provider" "github_main_deploy" {
   project                            = var.project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-deploy"
-  display_name                       = "CommitTask main Cloud Run deployment"
+  display_name                       = "Meridian Cloud Run Deploy"
 
   attribute_mapping = {
     "google.subject"       = "assertion.sub"
