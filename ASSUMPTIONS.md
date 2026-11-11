@@ -196,3 +196,8 @@ No Terraform validation, cloud apply, image build, or CI job success is claimed.
 ## Artifact Registry least-privilege refinement — 2026-11-11
 
 The regional Docker repository is created and IAM-managed by the privileged bootstrap root. The `meridian-poc-deployer` service account no longer has project-wide `roles/artifactregistry.admin`; it retains repository-scoped `roles/artifactregistry.writer` for publishing images. No extra Reader role is necessary for that publisher. Cloud Run's service agent image-pull access should be checked during first real deployment. These changes are committed but have not yet been applied or validated against GCP.
+
+
+## GitHub image build decision — 2026-11-11
+
+The operator reported completed bootstrap and validated PoC root. Docker builds were moved into GitHub Actions with a new meridian-poc-builder SA, scoped only to repository-level Artifact Registry Writer. Separate github-build WIF accepts exact main-branch push from the Docker workflow and maps a unique attribute.pipeline so other pool providers cannot impersonate the builder. The workflow tags with full Git SHA and publishes an immutable digest, but does NOT deploy. The bootstrap delta, GitHub variables, and successful build are not yet verified. Reviewer identity was confirmed by Google IAM as group:gcp-hr@comm-it.cloud, so bootstrap tfvars must retain reviewer_principal_type=group.
