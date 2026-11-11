@@ -35,7 +35,7 @@ IAM login proves identity, **not** database privileges. PostgreSQL `GRANT` for t
 
 ### Conflict with the exercise's literal wording
 
-The exercise asks for **two secrets: database password and third-party API token**. Both are now implemented and read by the API per request; the password belongs to a separate built-in PostgreSQL user that the API does **not** use for database login. The API continues to use automatic IAM database authentication. The existing group `db_secret_reader` (real Google Group email supplied as a variable) receives access only to the password secret, while the API SA receives scoped access to both secrets to satisfy the exercise's runtime-read requirement. This is an explicitly documented PoC concession to the exercise, not our preferred production password-handling architecture. See `docs/SECRETS-DESIGN.md`.
+The exercise asks for **two secrets: database password and third-party API token**. Both are now implemented and read by the API per request; the password belongs to a separate built-in PostgreSQL user that the API does **not** use for database login. The API continues to use automatic IAM database authentication. The proposed future group `db_secret_reader` is NOT provisioned or granted access yet (requires directory-backed identity and a reviewed IAM binding); it is intended to read only the password secret, while the API SA receives scoped access to both secrets to satisfy the exercise's runtime-read requirement. This is an explicitly documented PoC concession to the exercise, not our preferred production password-handling architecture. See `docs/SECRETS-DESIGN.md`.
 
 ### Outstanding verification
 
