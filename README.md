@@ -1,6 +1,6 @@
 # Meridian Payments — Google Cloud evaluation
 
-**Status: source implementation in progress; not deployed/tested.** Terraform defines a custom VPC, private PostgreSQL Cloud SQL, Cloud Run HTTP API, GCS state bucket and Secret Manager. All regional resources use one region (`europe-west1`); inherently global GCP resources are documented in `docs/REGION-DESIGN.md`. The `GET /health` handler performs a fresh IAM-authenticated SQL `SELECT 1` and live reads of both Secret Manager secrets. The API returns 503 on failure.
+**Status: source implementation in progress; not deployed/tested.** Terraform defines a custom VPC, private PostgreSQL Cloud SQL, Cloud Run HTTP API, GCS state bucket and Secret Manager. All regional application resources use one chosen EU region (default `europe-west1`; allowed `europe-west3`/`europe-west4`). The Terraform State bucket intentionally uses EU multi-region for resilience. See `docs/REGION-DESIGN.md`. The `GET /health` handler performs a fresh IAM-authenticated SQL `SELECT 1` and live reads of both Secret Manager secrets. The API returns 503 on failure.
 
 **Identity and design:** A privileged bootstrap root creates 6 distinct service accounts (Terraform deployer, API runtime, migration runtime, 3 per-developer identities) and required IAM. Normal deployer has functional roles but no Owner/Editor/project IAM Admin. The Cloud Run API uses Cloud SQL **automatic IAM database authentication** via Python Connector, not an app password. Developer-triggered migration Job is designed, **not yet implemented**. See `docs/IAM-DESIGN.md`.
 
