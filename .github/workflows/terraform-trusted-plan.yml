@@ -1,0 +1,56 @@
+name: Trusted Terraform plan (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    # Never execute this workflow with credentials from an untrusted PR ref.
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: gcp-plan
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_candidate_full_name: ${{ vars.TF_CANDIDATE_FULL_NAME }}
+      TF_VAR_container_image: ${{ vars.TF_CONTAINER_IMAGE }}
+      TF_VAR_deployed_commit: ${{ vars.TF_DEPLOYED_COMMIT }}
+      TF_STATE_BUCKET: ${{ vars.GCS_TF_STATE_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: Check inputs (non-secret)
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          PLAN_SA: ${{ vars.GCP_PLAN_SA }}
+        shell: bash
+        run: |
+          for v in "$TF_VAR_project_id" "$TF_VAR_candidate_full_name" "$TF_VAR_container_image" "$TF_VAR_deployed_commit" "$TF_STATE_BUCKET" "$WIF_PROVIDER" "$PLAN_SA"; do
+            if [ -z "$v" ]; then
+              echo "::error::Missing required configuration; see docs/CI-CD.md"
+              exit 1
+            fi
+          done
+      - name: Authenticate via OIDC as plan-only identity
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PLAN_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+      - name: Initialize remote backend
+        working-directory: terraform/poc
+        run: terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=meridian/poc"
+      - name: Terraform plan (read-only SA, never apply)
+        working-directory: terraform/poc
+        run: terraform plan -input=false -lock=false -no-color -compact-warnings
