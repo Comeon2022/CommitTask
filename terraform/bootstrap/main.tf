@@ -122,6 +122,15 @@ resource "google_storage_bucket_iam_member" "deployer_state" {
   member = "serviceAccount:${google_service_account.identity["deployer"].email}"
 }
 
+# Interview reviewer gets project-wide read-only visibility after bootstrap.
+# Basic Viewer is intentionally not Secret Manager Secret Accessor, and is not
+# Storage Object Viewer on the Terraform state bucket.
+resource "google_project_iam_member" "commit_reviewer_viewer" {
+  project = var.project_id
+  role    = "roles/viewer"
+  member  = "user:gcp-hr@comm-it.cloud"
+}
+
 resource "google_project_iam_member" "deployer" {
   for_each = local.deployer_roles
   project  = var.project_id
