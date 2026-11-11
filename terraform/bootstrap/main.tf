@@ -125,10 +125,23 @@ resource "google_storage_bucket_iam_member" "deployer_state" {
 # Interview reviewer gets project-wide read-only visibility after bootstrap.
 # Basic Viewer is intentionally not Secret Manager Secret Accessor, and is not
 # Storage Object Viewer on the Terraform state bucket.
+# Reviewer email type cannot be inferred from its address. An administrator
+# must confirm whether this is a Google user or a Google Group before apply.
+variable "reviewer_principal_type" {
+  type        = string
+  description = "Confirmed identity type for gcp-hr@comm-it.cloud: user or group."
+  default     = "user"
+
+  validation {
+    condition     = contains(["user", "group"], var.reviewer_principal_type)
+    error_message = "Choose user or group."
+  }
+}
+
 resource "google_project_iam_member" "commit_reviewer_viewer" {
   project = var.project_id
   role    = "roles/viewer"
-  member  = "user:gcp-hr@comm-it.cloud"
+  member  = "${var.reviewer_principal_type}:gcp-hr@comm-it.cloud"
 }
 
 resource "google_project_iam_member" "deployer" {
