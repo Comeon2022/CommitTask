@@ -201,3 +201,8 @@ The regional Docker repository is created and IAM-managed by the privileged boot
 ## GitHub image build decision — 2026-11-11
 
 The operator reported completed bootstrap and validated PoC root. Docker builds were moved into GitHub Actions with a new meridian-poc-builder SA, scoped only to repository-level Artifact Registry Writer. Separate github-build WIF accepts exact main-branch push from the Docker workflow and maps a unique attribute.pipeline so other pool providers cannot impersonate the builder. The workflow tags with full Git SHA and publishes an immutable digest, but does NOT deploy. The bootstrap delta, GitHub variables, and successful build are not yet verified. Reviewer identity was confirmed by Google IAM as group:gcp-hr@comm-it.cloud, so bootstrap tfvars must retain reviewer_principal_type=group.
+
+
+## Artifact Registry least-privilege follow-up — 2026-11-11
+
+The new GitHub image builder supersedes the local Docker publisher. Removed Bootstrap `deployer_push` repository IAM member, leaving the image publisher `meridian-poc-builder` as the scoped writer. Refactored the release preparation script into a plan-only operation that accepts the GitHub SHA and immutable image digest and uses Deployer SA solely for Terraform. This changes IAM **source**; a new bootstrap apply must remove the old live binding and provision any pending Builder identity. Do not claim GCP IAM is already updated.
