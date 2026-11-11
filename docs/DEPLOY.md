@@ -1,89 +1,97 @@
-# Deployment runbook (Windows PowerShell)
+# GCP deployment runbook (PowerShell)
 
-**Status:** Code committed; not deployed or validated against a real GCP project. All cloud resource definitions live in Terraform. Container builds produce an artifact, not an independently managed cloud resource.
+**Status:** Not yet deployed; Terraform has not been validated against a real project. This is a plan, not a successful deployment report.
 
 ## Prerequisites
 
-Google Cloud project with billing enabled, `gcloud`, Terraform 1.7+, Docker, Git; account with sufficient GCP permissions for the PoC. You should use synthetic data and a disposable, isolated project. Cloud SQL can incur charges.
+New billing-enabled GCP project; Terraform, Docker, Git and Google Cloud SDK installed. Choose unique GCS bucket name, and ensure the bootstrap **human administrator** has permissions to configure IAM and create infrastructure. No service-account JSON keys.
 
-## 1. Authenticate and select your project
+## Step 1 — bootstrap identities and remote state bucket
 
 ```powershell
 $ProjectId = "YOUR_GCP_PROJECT_ID"
-$Region = "europe-west1"
-$Bucket = "YOUR_GLOBALLY_UNIQUE_GCS_BUCKET_NAME"
+$Region    = "europe-west1"
+$Bucket    = "YOUR_GLOBALLY_UNIQUE_BUCKET_NAME"
 
 gcloud auth login
 gcloud auth application-default login
 gcloud config set project $ProjectId
-```
 
-## 2. Bootstrap remote Terraform state through Terraform
-
-```powershell
 cd terraform/bootstrap
 terraform init
+terraform plan -var="project_id=$ProjectId" -var="state_bucket_name=$Bucket"
 terraform apply -var="project_id=$ProjectId" -var="state_bucket_name=$Bucket"
+terraform output deployer_service_account
+terraform output api_service_account
+terraform output developer_service_accounts
 ```
 
-**Important:** bootstrap creates a *local* Terraform state until you configure a remote backend for bootstrap itself. Protect and preserve this state outside the repository. The PoC below uses the new GCS backend. GCS bucket versioning and public access prevention are enabled.
+Bootstrap grants functional roles to the deployer and creates API, migration and three developer SAs. Human developer identities are optional until actual emails are supplied via `developer_emails`. The bootstrap creates a **temporary local state**: keep it secured, do not commit it, and migrate it to protected remote storage as a separate controlled step. The GCS bucket for the PoC is versioned, EU-located, and private.
 
-## 3. Initialize PoC backend and create the Artifact Registry repository first
+**Bootstrap administrator must grant the human/CI deployment principal `roles/iam.serviceAccountTokenCreator` on the deployer SA**, not project-wide. In Google Cloud this IAM policy can be managed using the administrator's bootstrap process; do not give the deployer permission to grant itself project-level IAM. The deployer SA does not use a JSON key.
+
+## Step 2 — initialize the PoC under short-lived SA impersonation
 
 ```powershell
 cd ../poc
+$Deployer = "meridian-poc-deployer@$ProjectId.iam.gserviceaccount.com"
+$env:GOOGLE_IMPERSONATE_SERVICE_ACCOUNT = $Deployer
 terraform init -backend-config="bucket=$Bucket" -backend-config="prefix=meridian/poc"
-terraform apply -target=google_artifact_registry_repository.api -var="project_id=$ProjectId" -var="container_image=example.invalid/placeholder" -var="deployed_commit=0123456" -var="candidate_full_name=PLACEHOLDER"
 ```
 
-The single targeted apply is a **bootstrap exception** to resolve the image-build dependency. Subsequent runs should use regular full `terraform plan` and `apply`, not `-target`.
+The human caller still needs read/write access to the backend bucket, or a working ADC-backed impersonation flow supported by the Terraform GCS backend. Do not assume `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` alone authorizes bucket access; verify which principal is accessing the state bucket. Grant GCS object permissions for only the state bucket/prefix as permitted by your organization; avoid broad project Storage Admin.
 
-## 4. Build and push the container image
+## Step 3 — bootstrap the container repository with Terraform
+
+```powershell
+terraform apply -target=google_artifact_registry_repository.api `
+  -var="project_id=$ProjectId" `
+  -var="container_image=example.invalid/placeholder" `
+  -var="deployed_commit=0123456" `
+  -var="candidate_full_name=PLACEHOLDER"
+```
+
+This is an intentional `-target` exception: the registry must exist before Docker can push the application image. Subsequent deployments use full plans. Prefer separating the registry into a dedicated bootstrap root in a larger engagement.
+
+## Step 4 — build and push versioned application image
 
 Run from the repository root:
 
 ```powershell
 cd ../..
-$Commit = (git rev-parse --short=7 HEAD).Trim()
+$Commit   = (git rev-parse --short=7 HEAD).Trim()
 $ImageTag = "$Region-docker.pkg.dev/$ProjectId/meridian-poc/api:$Commit"
-
 gcloud auth configure-docker "$Region-docker.pkg.dev"
 docker build -t $ImageTag ./app
 docker push $ImageTag
 ```
 
-For repeatable deployment, use a digest pinned to the pushed image. Retrieve the immutable digest from Artifact Registry/Docker and set `container_image` to `.../api@sha256:...`. Avoid relying solely on a mutable tag.
+Container push requires `roles/artifactregistry.writer` on the target repository for the authenticated **image publisher**. This publisher is not implicitly the Terraform deployer: `gcloud auth configure-docker` uses the local gcloud identity. Track the image digest and set `container_image` to the immutable `...@sha256:...` reference for the final deployment.
 
-## 5. Deploy PoC
+## Step 5 — apply and verify
 
 ```powershell
 cd terraform/poc
-terraform plan -var="project_id=$ProjectId" -var="candidate_full_name=YOUR_EXACT_INTERVIEW_NAME" -var="deployed_commit=$Commit" -var="container_image=$ImageTag" -out=plan.tfplan
+terraform fmt -check -recursive
+terraform validate
+terraform plan `
+  -var="project_id=$ProjectId" `
+  -var="candidate_full_name=YOUR_EXACT_INTERVIEW_NAME" `
+  -var="deployed_commit=$Commit" `
+  -var="container_image=$ImageTag" -out=plan.tfplan
 terraform apply plan.tfplan
-terraform output health_url
+$Url = terraform output -raw health_url
+Invoke-RestMethod -Uri $Url
 ```
 
-The tag above works for an initial smoke test; pin the digest for the final review deployment. Use the real SHA associated with the image's source revision.
+The `/health` handler must return a 200 JSON response with correct name/actual commit/region and `db` and `secret` equal to `ok`. Both checks execute per request. Verify SQL has **no PUBLIC IPv4 address**.
 
-## 6. Verify
+## Known issues and risks
 
-```powershell
-$Health = (terraform output -raw health_url)
-Invoke-RestMethod -Uri $Health
-gcloud sql instances describe meridian-poc-postgres --project=$ProjectId --format="json(ipAddresses)"
-```
-
-Expected: `/health` returns exact fields `candidate,commit,region,db,secret` with db/secret = ok **after actual checks**. Cloud SQL must have no PUBLIC IPv4 address. Deliberately test missing secret/database permissions in a safe non-production environment and restore IAM afterwards.
-
-## Constraints and known gaps
-
-- Terraform creates synthetic API-token and DB-password versions. **Their plaintext values are present in Terraform state**, including GCS object versions; restrict access tightly and protect the bootstrap state. This is a PoC trade-off, not an ideal production secret-seeding process.
-- Application reads both secrets at runtime using its dedicated service account and checks the database on each health call. Secrets do not appear in app environment variables or source.
-- The API is public because the exercise requires a public health URL. It exposes only `/health`; production would consider protected endpoints, ingress/load balancer policies, and operational security.
-- `Cloud Run Job` developer migrations are still an **architecture proposal**, not implemented in Terraform yet. See `docs/DEVELOPER-MIGRATIONS.md`.
-- No CI workflow is present yet. No Terraform `validate` or live deployment has run here.
-- Public `allUsers` invoker may be blocked by organization policy; use a separate test project or explicitly approved public ingress configuration.
-- For repeatable main configuration, avoid manually editing cloud resources. Infrastructure definitions and modifications belong in Terraform.
-- Free trial credit does not guarantee zero cost: set a budget alert and tear down after review.
-
-See `CLARIFICATIONS.md`, `ASSUMPTIONS.md` and the exercise PDF.
+- The application authenticates to PostgreSQL as its **runtime service account**, using Cloud SQL IAM DB auth, not a password. This differs from the exercise's literal request for *two* secrets; see `docs/IAM-DESIGN.md`.
+- SQL connector requires private route to Cloud SQL and API access to Google Cloud (TCP 443 plus connector's 3307 connection). The project must support Direct VPC egress and Private Google Access.
+- A synthetic provider token is generated by Terraform: secret value is present in the GCS Terraform state and historical bucket versions. This must be revised for a production setting.
+- No migration Cloud Run Job or SQL DDL grants yet: developer service accounts cannot execute migrations until that job is deployed and per-job IAM is configured.
+- `terraform validate`, real image push and cloud deployment have **not** been executed by the assistant. The infrastructure may need provider/version corrections based on actual validation.
+- Public invocation may be prevented by organization policy. Use an approved dedicated evaluation project.
+- Keep the environment running until the review, then tear down with Terraform.
