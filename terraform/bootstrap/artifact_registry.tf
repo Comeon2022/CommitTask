@@ -19,16 +19,6 @@ output "artifact_repository" {
   value = google_artifact_registry_repository.api.id
 }
 
-# The authorized release operator uses short-lived deployer credentials when
-# Docker pushes to this exact repository. No project-wide publisher grant.
-resource "google_artifact_registry_repository_iam_member" "deployer_push" {
-  project    = var.project_id
-  location   = google_artifact_registry_repository.api.location
-  repository = google_artifact_registry_repository.api.name
-  role       = "roles/artifactregistry.writer"
-  member     = "serviceAccount:${google_service_account.identity["deployer"].email}"
-}
-
 # GitHub Actions builder can push images ONLY to this Docker repository.
 # No project-wide Artifact Registry role, Cloud Run permissions or state access.
 resource "google_artifact_registry_repository_iam_member" "github_builder_push" {
