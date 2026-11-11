@@ -1,7 +1,8 @@
 # Copy locally to terraform.tfvars (never commit real identities).
 project_id        = "commitask"
+project_number    = "924903658971"
 region            = "europe-west1"
-state_bucket_name = "YOUR_GLOBALLY_UNIQUE_GCS_BUCKET_NAME"
+state_bucket_name = "commitask-tfstate-924903658971"
 
 # Omit these until actual Google accounts are available.
 # developer_emails = {
@@ -12,7 +13,8 @@ state_bucket_name = "YOUR_GLOBALLY_UNIQUE_GCS_BUCKET_NAME"
 
 # Human identity to run Terraform locally by short-lived SA impersonation.
 # Set the real Google account email after creating your GCP project.
-# terraform_operator_email = "YOUR_USER@YOUR_DOMAIN"
+terraform_operator_email = "karu.lior@gmail.com"
+reviewer_principal_type  = "group" # Confirmed by Google Cloud IAM error
 
 # Verified GitHub repository identifiers. WIF trust checks immutable IDs as
 # well as the full repository name. These are variables, not literals in OIDC code.
