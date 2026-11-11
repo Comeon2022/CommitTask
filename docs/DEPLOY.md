@@ -126,7 +126,8 @@ The command checks policy membership; it is not an authorization simulator. Conf
 After bootstrapping the registry, from repository root invoke:
 
 ```powershell
-.\\scripts\\prepare-release.ps1 -CandidateFullName "YOUR_ACTUAL_NAME" `\n  -StateBucket "YOUR_REAL_STATE_BUCKET"
+.\scripts\prepare-release.ps1 -CandidateFullName "YOUR_ACTUAL_NAME" `
+  -StateBucket "YOUR_REAL_STATE_BUCKET"
 ```
 
 This builds the exact checked-out source with a Git SHA label, pushes the image, resolves the immutable digest, and writes a Terraform plan containing **both** the image digest and the short Git SHA. It does not automatically apply. Review and apply the plan intentionally. This replaces the manual per-release SHA/image editing in the earlier instructions. Build requires Docker and Artifact Registry push permissions; run the script only after registry bootstrap.
