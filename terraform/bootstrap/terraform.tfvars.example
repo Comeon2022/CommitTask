@@ -13,3 +13,9 @@ state_bucket_name = "YOUR_GLOBALLY_UNIQUE_GCS_BUCKET_NAME"
 # Human identity to run Terraform locally by short-lived SA impersonation.
 # Set the real Google account email after creating your GCP project.
 # terraform_operator_email = "YOUR_USER@YOUR_DOMAIN"
+
+# Verified GitHub repository identifiers. WIF trust checks immutable IDs as
+# well as the full repository name. These are variables, not literals in OIDC code.
+github_repository_full_name = "Comeon2022/CommitTask"
+github_repository_id        = "1453727041"
+github_owner_id             = "104059889"
