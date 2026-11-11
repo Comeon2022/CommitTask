@@ -1,37 +1,28 @@
-# AI assistance and human verification log
+# AI-LOG.md — INCOMPLETE, NOT READY FOR SUBMISSION
 
-**Candidate:** Lior Karu  
-**Project:** Meridian Payments — Google Cloud PoC  
-**Date:** 2026-11-11
+> **Critical:** The exercise requires the **entire unedited transcript of every AI conversation**, from the first prompt to the final response, with sessions separated. Redact **only credentials or keys**. A summary, reconstruction or selected quotations will be treated as missing. This repository does **not** yet contain the full transcript.
+>
+> **Do not submit this placeholder as a compliant log.**
 
-## Use of AI
+## Required original sessions
 
-ChatGPT (GPT-6) was used interactively as a design and coding assistant for Terraform, IAM/WIF trust separation, Cloud Run application code, GitHub Actions CI/CD, debugging and documentation. No reliable measured percentage of generated code is available; do **not** treat the AI contribution as a precise percentage. The candidate executed real infrastructure changes, inspected Terraform plans, reviewed GitHub runs and supplied live command output for verification.
+1. **ChatGPT / GPT-6 — Meridian Payments GCP Delivery Architect exercise, 2026-11-11.** The first user prompt is: `קיבלנו משימה לפני ראיון בקומיט. בוא נבין אותה.` The conversation covers clarifications, assumptions, Terraform design and debugging, Cloud Run SQL and Secret Manager, GitHub Actions, IAM hardening and final submission review.
+2. **Any additional AI tools/sessions actually used** during the exercise (if any) must be appended as separate, complete transcripts.
 
-This is a reconstruction of evidenced decisions and corrections, not a verbatim transcript. Actual chat records can be provided separately if requested.
+## Where the required evidence appears in the original conversation
 
-## Three concrete AI corrections with operator evidence
+Locate these real corrections **in the original unedited exchange** when copying the full chat; preserve surrounding messages, including errors and dead ends:
 
-1. **Cloud SQL probe row shape.** The initial Python health code expected the query result to equal `(1,)`. In the tested `pg8000` environment, `SELECT 1` returned `[1]`. The implementation was corrected to check the first scalar column. Subsequently `/health` reported `db: ok`.
-2. **Cloud Run v1/v2 CLI mismatch.** A suggested `gcloud run services describe --v2` command failed with `unrecognized arguments: --v2`. The operator used the supported `--format=json | ConvertFrom-Json` v1 `spec.template.metadata.annotations` path instead. It showed `minScale=0`, revision `maxScale=2`, concurrency `80`, digest-pinned image and private-ranges-only egress.
-3. **State IAM privilege lockout.** The AI initially recommended removing legacy GCS convenience bindings before ensuring explicit operator bucket IAM rights. Following a partial change, Terraform refresh failed with `403 storage.buckets.getIamPolicy`. The operator recovered via a **temporary project Storage Admin Terraform grant**, created and applied **permanent bucket-scoped Storage Admin** through Terraform, and successfully completed all four legacy binding removals. A live policy check showed exactly operator Storage Admin, deployer Object Admin, plan Object Viewer. Cleanup of the project-level recovery grant was planned as `0 add, 0 change, 1 destroy`; post-cleanup apply evidence remained outstanding at documentation time.
+- **Correction A — DB health check:** `pg8000` returned `[1]` from `SELECT 1`; initial Python check compared against `(1,)`; code was fixed to compare scalar `row[0]`.
+- **Correction B — Cloud Run CLI:** assistant suggested `gcloud run services describe ... --v2`; the operator showed `unrecognized arguments: --v2` and inspected `$service.spec.template.metadata.annotations` instead.
+- **Correction C — Terraform state IAM:** initial removal of storage legacy roles led to a `403 storage.buckets.getIamPolicy` error; the operator used Terraform to add temporary project Storage Admin, add permanent bucket-scoped Storage Admin, then successfully removed the legacy bindings.
+- **Correction D — transcript requirement:** the assistant incorrectly presented a summary-style `AI-LOG.md` as ready; the original exercise requires full transcripts and this was subsequently corrected.
 
-## Additional verification
+These are **navigation notes only** and must not be substituted for the original conversations. After importing the transcript(s), put the exact section links/line references for at least three corrections in `README.md`.
 
-- CI builder and CI deploy workflows completed successfully in GitHub Actions with separate WIF identities and a digest-based deployment.
-- Public Cloud Run `/health` returned HTTP 200 with commit SHA, `db=ok` and `secret=ok` for commit `8d89261fff66faada4df9a49e25daa8d225d7961` at last recorded success.
-- Cloud Run service IAM displayed `roles/run.developer` for the CI deploy SA and `roles/run.invoker` for `allUsers`.
-- Private-IP Cloud SQL and the GCS state bucket IAM were examined with Google Cloud CLI.
-- GitHub `protect main` Ruleset was inspected; it is active with no bypass actors, but initially applied to all branches.
+## How to complete this file
 
-## Unfinished or deliberately out of scope
-
-- Developer-triggered Cloud Run migration Job and PostgreSQL DDL permissions.
-- Production API access controls, HA/DR, secret seeding outside Terraform state, and advanced monitoring.
-- Independent verification of `gcp-plan` Environment restrictions.
-- Final post-cleanup project IAM inspection; Bootstrap no-change plan and PoC metadata/scaling drift resolution.
-- Merging PR #1 and finalizing the complete repository on `main`.
-
-## Time accounting
-
-The conversation spans several hours on 2026-11-11; it includes pauses between operator actions. **Exact active hands-on minutes were not independently measured** and should not be presented as an exact duration.
+- Open each original AI chat/session and copy every **user and assistant message verbatim** and in order, including failure outputs and corrections. Preserve distinct session boundaries. For multiple chats, add `## Session N — <tool> — <date>` headings.
+- If the platform provides an official data export containing the chat, extract the original messages without rewriting or synthesizing missing responses. Exclude unrelated chats from this exercise. Preserve the complete text of each exercise-related session.
+- **Redact only credentials, API keys and tokens** before committing. Do not redact ordinary technical errors or remove embarrassing mistakes.
+- Replace **this entire placeholder** with the complete transcripts; do not leave a summary at the top pretending to be a transcript.
