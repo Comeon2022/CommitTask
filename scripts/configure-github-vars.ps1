@@ -12,8 +12,8 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $Repository = "Comeon2022/CommitTask"
-$ProjectId = "commitask"
-$ProjectNumber = "924903658971"
+$ProjectId = "commitask01"
+$ProjectNumber = "238671625358"
 $PlanSa = "meridian-poc-plan@$ProjectId.iam.gserviceaccount.com"
 $Provider = "projects/$ProjectNumber/locations/global/workloadIdentityPools/meridian-github/providers/github-plan"
 
@@ -23,8 +23,8 @@ if ($StateBucket -match 'YOUR_|REPLACE|PLACEHOLDER' -or
     $DeployedCommit -notmatch '^[0-9a-f]{7,40}$') {
   throw "Supply actual state bucket, candidate, built image and matching git SHA."
 }
-if ($ContainerImage -notmatch '^europe-west1-docker\.pkg\.dev/commitask/meridian-poc/') {
-  throw "Container image must be in europe-west1 / commitask / meridian-poc."
+if ($ContainerImage -notmatch '^europe-west1-docker\.pkg\.dev/commitask01/meridian-poc/') {
+  throw "Container image must be in europe-west1 / commitask01 / meridian-poc."
 }
 foreach ($cmd in @("gh", "gcloud")) {
   if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "$cmd is not installed." }
