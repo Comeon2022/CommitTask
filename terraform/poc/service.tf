@@ -24,10 +24,17 @@ resource "google_service_account" "api" {
   depends_on   = [google_project_service.required]
 }
 
-resource "google_secret_manager_secret_iam_member" "db_access" {
-  secret_id = google_secret_manager_secret.database_password.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.api.email}"
+# Connector needs Cloud SQL Client; IAM database login needs Instance User.
+resource "google_project_iam_member" "api_cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_project_iam_member" "api_cloudsql_login" {
+  project = var.project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "serviceAccount:${google_service_account.api.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "token_access" {
@@ -82,20 +89,16 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.deployed_commit
       }
       env {
-        name  = "DB_HOST"
-        value = google_sql_database_instance.postgres.private_ip_address
+        name  = "INSTANCE_CONNECTION_NAME"
+        value = google_sql_database_instance.postgres.connection_name
       }
       env {
         name  = "DB_NAME"
         value = google_sql_database.app.name
       }
       env {
-        name  = "DB_USER"
-        value = google_sql_user.app.name
-      }
-      env {
-        name  = "DB_PASSWORD_SECRET"
-        value = google_secret_manager_secret.database_password.secret_id
+        name  = "DB_IAM_USER"
+        value = google_sql_user.api_iam.name
       }
       env {
         name  = "PROVIDER_TOKEN_SECRET"
@@ -115,11 +118,11 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   depends_on = [
-    google_secret_manager_secret_version.database_password,
     google_secret_manager_secret_version.provider_token,
-    google_secret_manager_secret_iam_member.db_access,
     google_secret_manager_secret_iam_member.token_access,
     google_artifact_registry_repository.api,
+    google_project_iam_member.api_cloudsql_client,
+    google_project_iam_member.api_cloudsql_login,
   ]
 }
 
