@@ -1,0 +1,113 @@
+name: Deploy existing Cloud Run API (main)
+
+on:
+  workflow_run:
+    workflows: ["Build and publish API image (main)"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudrun-deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Only a successful trusted push build of this exact repository.
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == 'Comeon2022/CommitTask' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      WIF_PROVIDER: ${{ vars.GCP_DEPLOY_WIF_PROVIDER }}
+      DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
+      IMAGE_NAME: europe-west1-docker.pkg.dev/commitask01/meridian-poc/api
+      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Check trusted configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_ID" = "commitask01"
+          test "$DEPLOY_SA" = "meridian-poc-ci-deploy@commitask01.iam.gserviceaccount.com"
+          test -n "$WIF_PROVIDER"
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+
+      - name: Download manifest from exact successful build
+        uses: actions/download-artifact@v4
+        with:
+          name: image-release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify manifest SHA matches triggering GitHub run
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t values < release-manifest.txt
+          test "${#values[@]}" -eq 2
+          test "${values[0]}" = "$EXPECTED_SHA"
+          [[ "${values[1]}" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "digest=${values[1]}" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate as service-scoped CI deployer via separate OIDC trust
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_DEPLOY_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Install Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Update existing Cloud Run service to immutable image digest
+        env:
+          DIGEST: ${{ steps.release.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services update meridian-poc-api \
+            --project="$PROJECT_ID" \
+            --region=europe-west1 \
+            --image="${IMAGE_NAME}@${DIGEST}" \
+            --quiet
+
+      - name: End-to-end health verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The service URL comes from Cloud Run, never from the build artifact.
+          SERVICE_URL="$(gcloud run services describe meridian-poc-api \
+            --project="$PROJECT_ID" --region=europe-west1 --format='value(status.url)')"
+          test -n "$SERVICE_URL"
+          curl --fail-with-body --silent --show-error --retry 3 --retry-delay 3 \
+            --output health.json "$SERVICE_URL/health"
+          python3 - <<'PY'
+          import json, os
+          with open("health.json", encoding="utf-8") as fh:
+              health = json.load(fh)
+          if (health.get("commit") != os.environ["EXPECTED_SHA"] or
+                  health.get("db") != "ok" or health.get("secret") != "ok"):
+              raise SystemExit("Health check failed: " + repr(health))
+          print("Verified deployed SHA, Cloud SQL and Secret Manager")
+          PY
+          rm -f health.json
+
+      - name: Record successful deployment
+        env:
+          DIGEST: ${{ steps.release.outputs.digest }}
+        shell: bash
+        run: |
+          {
+            echo "## Cloud Run deployment verified"
+            echo "- Cloud Run service: \`meridian-poc-api\`"
+            echo "- Git commit: \`$EXPECTED_SHA\`"
+            echo "- Immutable image: \`${IMAGE_NAME}@${DIGEST}\`"
+            echo "- HTTP 200, db=ok, secret=ok"
+          } >> "$GITHUB_STEP_SUMMARY"
