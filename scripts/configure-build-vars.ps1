@@ -6,9 +6,9 @@ param()
 $ErrorActionPreference = "Stop"
 $Repository = "Comeon2022/CommitTask"
 $Vars = @{
-  GCP_PROJECT_ID         = "commitask"
-  GCP_BUILD_SA           = "meridian-poc-builder@commitask.iam.gserviceaccount.com"
-  GCP_BUILD_WIF_PROVIDER = "projects/924903658971/locations/global/workloadIdentityPools/meridian-github/providers/github-build"
+  GCP_PROJECT_ID         = "commitask01"
+  GCP_BUILD_SA           = "meridian-poc-builder@commitask01.iam.gserviceaccount.com"
+  GCP_BUILD_WIF_PROVIDER = "projects/238671625358/locations/global/workloadIdentityPools/meridian-github/providers/github-build"
 }
 & gh auth status
 if ($LASTEXITCODE -ne 0) { throw "Run gh auth login first." }
