@@ -30,6 +30,34 @@ data "google_service_account" "migration" {
   project    = var.project_id
 }
 
+# Google Groups are Cloud Identity / Workspace resources, not a project-local IAM
+# object. Supply the real group email after creating the group in that directory.
+variable "db_secret_reader_group_email" {
+  type        = string
+  default     = ""
+  description = "Existing Cloud Identity/Workspace group email for db_secret_reader; empty disables group binding."
+
+  validation {
+    condition     = var.db_secret_reader_group_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.db_secret_reader_group_email))
+    error_message = "Set a valid existing Google Group email, or leave empty until it exists."
+  }
+}
+
+# The API reads the database-password secret to satisfy the exercise's literal
+# runtime secret-read requirement; its SQL login STILL uses IAM, never this password.
+resource "google_secret_manager_secret_iam_member" "db_password_api_access" {
+  secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_service_account.api.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "db_password_group_access" {
+  count     = var.db_secret_reader_group_email == "" ? 0 : 1
+  secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "group:${var.db_secret_reader_group_email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "token_access" {
   secret_id = google_secret_manager_secret.provider_token.id
   role      = "roles/secretmanager.secretAccessor"
@@ -97,6 +125,10 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "PROVIDER_TOKEN_SECRET"
         value = google_secret_manager_secret.provider_token.secret_id
       }
+      env {
+        name  = "DB_PASSWORD_SECRET"
+        value = google_secret_manager_secret.db_password.secret_id
+      }
     }
 
     vpc_access {
@@ -112,6 +144,8 @@ resource "google_cloud_run_v2_service" "api" {
 
   depends_on = [
     google_secret_manager_secret_version.provider_token,
+    google_secret_manager_secret_version.db_password,
+    google_secret_manager_secret_iam_member.db_password_api_access,
     google_secret_manager_secret_iam_member.token_access,
     google_artifact_registry_repository.api,
   ]
