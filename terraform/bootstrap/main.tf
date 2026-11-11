@@ -90,7 +90,6 @@ locals {
     "roles/servicenetworking.networksAdmin",
     "roles/cloudsql.admin",
     "roles/run.admin",
-    "roles/artifactregistry.admin",
     "roles/secretmanager.admin",
     "roles/serviceusage.serviceUsageAdmin",
   ])
