@@ -1,6 +1,6 @@
 # GitHub Actions trust boundaries — revised 2026-11-11
 
-**Status:** Initial bootstrap completed and converged per operator report. The new builder identity and build WIF provider are pending an additional bootstrap apply; image-build workflow has not been tested. GCP project: `commitask` (`924903658971`).
+**Status:** Initial bootstrap completed and converged per operator report. The new builder identity and build WIF provider are pending an additional bootstrap apply; image-build workflow has not been tested. GCP project: `commitask01` (`238671625358`).
 
 ## Pull requests: no cloud credentials
 
@@ -8,10 +8,10 @@
 
 ## Approved main-branch plan: read-only identity
 
-`.github/workflows/terraform-trusted-plan.yml` is triggered **manually** by `workflow_dispatch`, checks `refs/heads/main`, and uses GitHub Environment `gcp-plan`. Its short-lived GCP identity is a dedicated `meridian-poc-plan@commitask.iam.gserviceaccount.com`, NOT the full-write Deployer.
+`.github/workflows/terraform-trusted-plan.yml` is triggered **manually** by `workflow_dispatch`, checks `refs/heads/main`, and uses GitHub Environment `gcp-plan`. Its short-lived GCP identity is a dedicated `meridian-poc-plan@commitask01.iam.gserviceaccount.com`, NOT the full-write Deployer.
 
 Bootstrap creates this SA and grants:
-- `roles/viewer` and `roles/iam.securityReviewer` on `commitask` (read-only project metadata/policies).
+- `roles/viewer` and `roles/iam.securityReviewer` on `commitask01` (read-only project metadata/policies).
 - `roles/storage.objectViewer` on the **Terraform state bucket only**, to load existing state.
 - `roles/iam.workloadIdentityUser` on this **plan SA only**, allowing trusted provider tokens to impersonate it. **No** WIF binding on the deployer SA.
 
@@ -45,9 +45,9 @@ These are inputs, not hard-coded in the OIDC provider expression. Validate them 
 
 | Variable | Expected value |
 | --- | --- |
-| `GCP_PROJECT_ID` | `commitask` |
-| `GCP_WIF_PROVIDER` | `projects/924903658971/locations/global/workloadIdentityPools/meridian-github/providers/github-plan` |
-| `GCP_PLAN_SA` | `meridian-poc-plan@commitask.iam.gserviceaccount.com` |
+| `GCP_PROJECT_ID` | `commitask01` |
+| `GCP_WIF_PROVIDER` | `projects/238671625358/locations/global/workloadIdentityPools/meridian-github/providers/github-plan` |
+| `GCP_PLAN_SA` | `meridian-poc-plan@commitask01.iam.gserviceaccount.com` |
 | `GCS_TF_STATE_BUCKET` | Bucket created by bootstrap |
 | `TF_CANDIDATE_FULL_NAME` | Exact candidate name |
 | `TF_CONTAINER_IMAGE` | Real published immutable digest |
@@ -74,11 +74,11 @@ After bootstrap and first image publishing, run `scripts/configure-github-vars.p
 
 ## Keyless GitHub Docker builder — 2026-11-11
 
-**Workflow:** `.github/workflows/docker-build.yml`, triggered by a push to `main` and using only `contents:read` and `id-token:write`. It checks out the source revision, obtains a short-lived Google OAuth token through WIF, builds the `app/Dockerfile`, pushes `europe-west1-docker.pkg.dev/commitask/meridian-poc/api:<full-git-sha>`, and reports its **immutable digest** and matching commit SHA in the GitHub Actions job summary. No Cloud Run deployment, Terraform state access, Secret Manager permission, long-lived key or Terraform apply.
+**Workflow:** `.github/workflows/docker-build.yml`, triggered by a push to `main` and using only `contents:read` and `id-token:write`. It checks out the source revision, obtains a short-lived Google OAuth token through WIF, builds the `app/Dockerfile`, pushes `europe-west1-docker.pkg.dev/commitask01/meridian-poc/api:<full-git-sha>`, and reports its **immutable digest** and matching commit SHA in the GitHub Actions job summary. No Cloud Run deployment, Terraform state access, Secret Manager permission, long-lived key or Terraform apply.
 
-**New SA:** `meridian-poc-builder@commitask.iam.gserviceaccount.com`. Bootstrap grants **only** `roles/artifactregistry.writer` at the repository level (`meridian-poc` in `europe-west1`). There are no project-wide roles for this SA.
+**New SA:** `meridian-poc-builder@commitask01.iam.gserviceaccount.com`. Bootstrap grants **only** `roles/artifactregistry.writer` at the repository level (`meridian-poc` in `europe-west1`). There are no project-wide roles for this SA.
 
-**Dedicated OIDC provider:** `projects/924903658971/locations/global/workloadIdentityPools/meridian-github/providers/github-build`. This provider validates immutable repo/owner IDs, full repo name, `push` event, `refs/heads/main`, and the exact workflow reference path. Its unique `attribute.pipeline = 'main-docker-build'` prevents the existing `github-plan` provider from accidentally reusing the builder impersonation binding. The builder's `roles/iam.workloadIdentityUser` IAM binding targets **only** this pipeline attribute on this SA. Neither provider can impersonate the deployer using these bindings.
+**Dedicated OIDC provider:** `projects/238671625358/locations/global/workloadIdentityPools/meridian-github/providers/github-build`. This provider validates immutable repo/owner IDs, full repo name, `push` event, `refs/heads/main`, and the exact workflow reference path. Its unique `attribute.pipeline = 'main-docker-build'` prevents the existing `github-plan` provider from accidentally reusing the builder impersonation binding. The builder's `roles/iam.workloadIdentityUser` IAM binding targets **only** this pipeline attribute on this SA. Neither provider can impersonate the deployer using these bindings.
 
 **First-time setup:** An existing project bootstrap was already applied. Therefore:
 1. Update the local repository with `git pull origin main` (ensure `terraform/bootstrap/terraform.tfvars` still contains `reviewer_principal_type = "group"` and operator details).
