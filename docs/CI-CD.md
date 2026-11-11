@@ -1,51 +1,64 @@
-# CI/CD security decision — 2026-11-11
+# GitHub Actions trust boundaries — revised 2026-11-11
 
-**Status:** Remediated in GitHub source; no GCP bootstrap, CI execution or Terraform plan has been validated.
+**Status:** Terraform source and workflow committed; bootstrap and CI runs NOT executed. GCP project: `commitask` (`924903658971`).
 
-## Active pull-request workflow
+## Pull requests: no cloud credentials
 
-`.github/workflows/terraform-pr.yml` now runs **credential-free**:
-- `terraform fmt -check -recursive`
-- `terraform init -backend=false` and `terraform validate` on bootstrap and PoC
-- Repository token has only `contents: read`. No OIDC, secret access, deployer impersonation, plan or apply.
+`.github/workflows/terraform-pr.yml` runs only formatting and validation without OIDC or GCP credentials. PR authors can edit code/workflows, so executing their Terraform using privileged credentials is unsafe.
 
-**Why:** A PR author who can change the workflow could insert an `apply` or arbitrary cloud commands. The old workflow made its `plan` job run as a full-write infrastructure deployer. A GitHub Environment is not a substitute for separating that identity from untrusted PR code. This risk is especially important in the public repository.
+## Approved main-branch plan: read-only identity
 
-## Workload Identity Federation source
+`.github/workflows/terraform-trusted-plan.yml` is triggered **manually** by `workflow_dispatch`, checks `refs/heads/main`, and uses GitHub Environment `gcp-plan`. Its short-lived GCP identity is a dedicated `meridian-poc-plan@commitask.iam.gserviceaccount.com`, NOT the full-write Deployer.
 
-`terraform/bootstrap/github_oidc.tf` now declares three parameters:
-- `github_repository_full_name`
-- `github_repository_id`
-- `github_owner_id`
+Bootstrap creates this SA and grants:
+- `roles/viewer` and `roles/iam.securityReviewer` on `commitask` (read-only project metadata/policies).
+- `roles/storage.objectViewer` on the **Terraform state bucket only**, to load existing state.
+- `roles/iam.workloadIdentityUser` on this **plan SA only**, allowing trusted provider tokens to impersonate it. **No** WIF binding on the deployer SA.
 
-The provider checks immutable repository/owner IDs plus repository name, `refs/heads/main`, and `workflow_dispatch`. It **does not** have any `roles/iam.workloadIdentityUser` binding to the full-write deployer or another SA. A provider without an impersonation grant cannot, by itself, deploy infrastructure.
+The WIF provider `meridian-github/providers/github-plan` restricts GitHub immutable repository/owner IDs, repository name, `main` branch, and `workflow_dispatch` event. It cannot authenticate from `pull_request`.
 
-Repository identities are supplied in `terraform/bootstrap/terraform.tfvars.example`. The names/IDs must be checked again if the repository is transferred. Do not take identity or trust parameters from an untrusted PR.
+**Mandatory protection before enabling the job:** protect `main` with required reviews and restrict merges/force pushes; create `gcp-plan` GitHub Environment with required reviewers and branch deployment restrictions. Only trusted maintainers should be able to approve it. Verify GitHub plan/environment availability and policy in Settings. A workflow in a public repo is not trustworthy merely because it is named "plan".
 
-## Terraform plan / apply during evaluation
+**Critical trade-off:** Current Terraform State includes two generated secret payloads, so a state-reader can technically obtain sensitive values. Thus plan-only is **read-only, not necessarily read-safe**. No raw plan artifacts or state files may be shared; keep the manual job gated. Production should seed secrets outside Terraform and use finer-grained state segregation before granting PR plans any access.
 
-Until a separate plan-only identity and protected workflow are implemented, run plans locally as an authorized operator impersonating the deployer SA as documented in `docs/DEPLOY.md`. For first deployment, manually inspect `terraform plan` and `terraform apply`. No service-account JSON keys are used.
+**Terraform plan permissions:** Predefined Viewer and Security Reviewer roles are starting values, not a proven sufficient set of permissions for every data source/provider refresh. Run the plan and refine with least privilege based on actual errors; do not grant admin roles to make it pass.
 
-The long-term CI split should be:
-1. Untrusted PRs: static checks only.
-2. Approved read-only plan from trusted code: dedicated `terraform-plan` SA, carefully scoped to the required read APIs and state access.
-3. Deploy from protected default branch/environment: separate deployer SA, limited to reviewed code and gated approval.
+## Apply and first release
 
-**Security caveat:** Our state currently contains Terraform-generated secrets; even a read-only plan SA with state-object read access may be able to extract them. Solve secret-value seeding before allowing arbitrary developers to view real plans or state.
+The **privileged bootstrap root** creates Artifact Registry before the first Docker push; the normal PoC root no longer creates it. Bootstrap grants the deployer `roles/artifactregistry.writer` on this specific repository.
 
-## Release image / SHA consistency
+`scripts/prepare-release.ps1` sets short-lived impersonation for **both** GCloud Docker authentication and the Terraform Google provider, confirms the registry exists, builds and pushes from a clean checked-out Git SHA, obtains the immutable digest, and saves the Terraform plan with consistent `container_image`/`deployed_commit`. The GCS backend is initialized with `impersonate_service_account` too.
 
-`scripts/prepare-release.ps1` reads the checked-out `git rev-parse --short=7 HEAD`, builds with an OCI revision label, pushes to Artifact Registry, resolves the immutable image digest from Docker, and generates a saved Terraform plan setting both `deployed_commit` and `container_image` together. It intentionally does **not** auto-apply. Plans and source commits must be reviewed.
+**No auto-apply in GitHub Actions.** A human reviews/applies the saved plan using the authorized deployer SA. Never run the PoC apply as a human Owner without knowing it.
 
-The Terraform variables still exist for explicit auditability; the script reduces human drift rather than cryptographically attesting that the container contents match a commit. Production should use controlled, reproducible builds, provenance/signatures and deployment by digest.
+## Bootstrap Terraform input variables
 
-## Known limitations
+```hcl
+github_repository_full_name = "Comeon2022/CommitTask"
+github_repository_id        = "1453727041"
+github_owner_id             = "104059889"
+```
 
-- The GitHub Actions validation job has not been executed successfully.
-- GCP/GitHub Workload Identity Federation has not been applied; no CI cloud privileges are active from this Terraform source.
-- The container image has not been built or pushed.
-- `scripts/prepare-release.ps1` requires PowerShell, Docker, Git, gcloud and Terraform and must be tested in the operator's workstation.
-- GitHub environments, branch protections and optional plan-only CI identity require a separate setup before enabling privileged automation.
-- The verbatim `AI-LOG.md` is still incomplete.
+These are inputs, not hard-coded in the OIDC provider expression. Validate them after repo ownership changes.
 
-References: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions ; https://docs.cloud.google.com/iam/docs/best-practices-for-using-workload-identity-federation
+## GitHub repository Actions Variables (after bootstrap)
+
+| Variable | Expected value |
+| --- | --- |
+| `GCP_PROJECT_ID` | `commitask` |
+| `GCP_WIF_PROVIDER` | `projects/924903658971/locations/global/workloadIdentityPools/meridian-github/providers/github-plan` |
+| `GCP_PLAN_SA` | `meridian-poc-plan@commitask.iam.gserviceaccount.com` |
+| `GCS_TF_STATE_BUCKET` | Bucket created by bootstrap |
+| `TF_CANDIDATE_FULL_NAME` | Exact candidate name |
+| `TF_CONTAINER_IMAGE` | Real published immutable digest |
+| `TF_DEPLOYED_COMMIT` | Corresponding real commit SHA |
+
+After bootstrap and first image publishing, run `scripts/configure-github-vars.ps1` with actual values using GitHub CLI. It does not create or approve a GitHub Environment. **Never** set a privileged deployer SA as `GCP_PLAN_SA`.
+
+## Work remaining
+
+- Terraform `fmt/validate`, GCP bootstrap and successful plan execution **not verified yet**.
+- Confirm GitHub environment is protected before running cloud plans.
+- Confirm service account role and GCS backend read paths by a real plan.
+- Reviewer `gcp-hr@comm-it.cloud` may be a **user or Google Group**; the type cannot be inferred from email. Bootstrap now has `reviewer_principal_type`, default `user`, and must be set to `group` if directory ownership confirms it is a group.
+- Document AI corrections in the full original conversation transcript before handing over.
