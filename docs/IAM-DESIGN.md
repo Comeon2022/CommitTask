@@ -44,3 +44,10 @@ The exercise asks for **two secrets: database password and third-party API token
 - Prove runtime has no schema DDL and developers have no direct SQL access.
 - Verify Cloud SQL API, Private Google Access and egress routing on live Cloud Run.
 - Never claim a migration Job exists or works until implemented and tested.
+
+
+## Review amendment — 2026-11-11
+
+The bootstrap has a `terraform_operator_email` variable that grants a named human `roles/iam.serviceAccountTokenCreator` only on the deployer SA (not project-wide). The operator must supply their actual account email when bootstrapping; an empty default creates no binding.
+
+We **did not** add a project-wide `roles/iam.serviceAccountViewer`: the deployer already has `roles/iam.serviceAccountUser` directly on the API and migration SAs, and that role includes `iam.serviceAccounts.get`, which is required by the two `data.google_service_account` lookups. This is a more restrictive IAM boundary. Confirm the effective permissions with a live Terraform plan; investigate any missing API/identity role only if observed.
