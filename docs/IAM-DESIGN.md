@@ -58,3 +58,10 @@ We **did not** add a project-wide `roles/iam.serviceAccountViewer`: the deployer
 Bootstrap grants `roles/viewer` on project `commitask` to the external reviewer `user:gcp-hr@comm-it.cloud` using `google_project_iam_member.commit_reviewer_viewer`. This provides project-wide resource inspection without modification permissions. Basic Viewer does **not** provide `secretmanager.versions.access` (secret values) and does not independently grant `storage.objects.get` on the Terraform state bucket, which contains generated secret payloads. Never grant `roles/secretmanager.secretAccessor` or `roles/storage.objectViewer` merely for interview review.
 
 This is an intended binding in the **privileged bootstrap root**, not yet applied to GCP. Validate its actual existence after `terraform apply`. Read-only inspection may be limited for some services without extra service-specific roles; add only if a demonstrated review need justifies it.
+
+
+## Security review — 2026-11-11: identities not used yet
+
+The three `dev1/dev2/dev3` service accounts and `migration` service account are **future architecture scaffolding** only. The migration Cloud Run Job is not implemented, no developer SAs have a Job-specific Run Invoker grant, and the migration SA has not been exercised in a runtime. Their presence does not constitute working migrations. To truly enforce minimal privileges while the Job is absent, a later cleanup should defer both the migration identity and its Cloud SQL roles until the migration capability exists, or implement the job and permission boundary fully.
+
+The GitHub PR workflow no longer impersonates the deployer; the full-write WIF binding was removed. A future CI plan SA must have separately reviewed rights and understand that Terraform state currently contains generated password/token values. See `docs/CI-CD.md`.
