@@ -191,3 +191,8 @@ No Terraform validation, cloud apply, image build, or CI job success is claimed.
 - The deployer has `roles/iam.serviceAccountUser` *on the two exact service accounts* referenced by `data.google_service_account`; this includes `iam.serviceAccounts.get`. A project-level `roles/iam.serviceAccountViewer` was not added because it would expand IAM visibility needlessly.
 - The trusted main-branch CI Plan SA has no `secretmanager.versions.access`. To avoid a normal Secret Manager secret-version refresh and additional secret IAM, the workflow uses `terraform plan -refresh=false`. This compares against cached Terraform state and is not a reliable drift-detection report. Any required runtime refresh or actual permission failures still need live validation. Manual authorized deployment uses the normal refreshed plan.
 - Plan SA can read the state bucket, whose current values include generated secrets. Therefore read-only IAM is **not** proof of secret confidentiality. Restrict main/environment approvals and redesign secret-state handling for production.
+
+
+## Artifact Registry least-privilege refinement — 2026-11-11
+
+The regional Docker repository is created and IAM-managed by the privileged bootstrap root. The `meridian-poc-deployer` service account no longer has project-wide `roles/artifactregistry.admin`; it retains repository-scoped `roles/artifactregistry.writer` for publishing images. No extra Reader role is necessary for that publisher. Cloud Run's service agent image-pull access should be checked during first real deployment. These changes are committed but have not yet been applied or validated against GCP.
