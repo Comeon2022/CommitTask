@@ -9,3 +9,7 @@ state_bucket_name = "YOUR_GLOBALLY_UNIQUE_GCS_BUCKET_NAME"
 #   dev2 = "dev2@example.com"
 #   dev3 = "dev3@example.com"
 # }
+
+# Human identity to run Terraform locally by short-lived SA impersonation.
+# Set the real Google account email after creating your GCP project.
+# terraform_operator_email = "YOUR_USER@YOUR_DOMAIN"
