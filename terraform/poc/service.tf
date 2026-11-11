@@ -44,14 +44,6 @@ resource "google_secret_manager_secret_iam_member" "token_access" {
   member    = "serviceAccount:${data.google_service_account.api.email}"
 }
 
-resource "google_artifact_registry_repository" "api" {
-  location      = var.region
-  repository_id = "meridian-poc"
-  format        = "DOCKER"
-  description   = "Container images for the Meridian evaluation"
-  depends_on    = [google_project_service.required]
-}
-
 resource "google_cloud_run_v2_service" "api" {
   name                = "meridian-poc-api"
   location            = var.region
@@ -127,7 +119,6 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.db_password,
     google_secret_manager_secret_iam_member.db_password_api_access,
     google_secret_manager_secret_iam_member.token_access,
-    google_artifact_registry_repository.api,
   ]
 }
 
