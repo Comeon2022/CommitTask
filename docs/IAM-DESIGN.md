@@ -1,89 +1,46 @@
-# ADR-002 — Identity and Least Privilege
+# IAM Design — Meridian Payments PoC
 
-**Status:** Implemented in Terraform source, unvalidated and not deployed.  
-**Decision date:** 2026-11-11.
+**Status (2026-11-11):** Infrastructure and CI/CD identities deployed and verified. Final cleanup verification is noted below.
 
-## Principals
+## Identity separation
 
-| Identity | Scope | Intended access |
-| --- | --- | --- |
-| `meridian-poc-deployer` | Terraform only | Functional project-scoped administrators for network, SQL, Run, Artifact Registry, Secret Manager and API enablement; `iam.serviceAccountUser` on the exact runtime SAs. No Owner/Editor/project IAM Admin. |
-| `meridian-poc-api` | Cloud Run service | `cloudsql.client`, `cloudsql.instanceUser`; read the provider-token and database-password secrets at runtime for the exercise's two-secret health check (though SQL login uses IAM, not the password). Database access uses Cloud SQL IAM DB auth. |
-| `meridian-poc-migration` | Future migration job | `cloudsql.client`, `cloudsql.instanceUser`; separate database principal. Migration Job is **not implemented yet**. |
-| `meridian-poc-dev1`, `dev2`, `dev3` | Per-human developer identities | No project-wide roles, no Cloud SQL, no secrets. Each real human may impersonate their **own** developer SA only. Job-specific run invocation will be granted when the Job exists. |
+| Identity | Scope and purpose |
+| --- | --- |
+| `meridian-poc-deployer` | Terraform-managed functional infrastructure privileges, not project Owner/Editor or project IAM Admin |
+| `meridian-poc-api` | Cloud Run runtime; Cloud SQL Client and Instance User; scoped secret reads |
+| `meridian-poc-migration` | Reserved for future migrations; migration Job **not implemented** |
+| `meridian-poc-dev1/dev2/dev3` | Separate developer identities; developer-triggered migration **not implemented** |
+| `meridian-poc-builder` | Artifact Registry Writer on the dedicated repository; WIF `github-build` |
+| `meridian-poc-ci-deploy` | Cloud Run Developer on **one existing service**, API runtime Service Account User, repository Artifact Registry Reader; WIF `github-deploy` |
+| `meridian-poc-plan` | Project Viewer/Security Reviewer and state-bucket Object Viewer; manually triggered, trusted-main-only WIF plan |
+| `group:gcp-hr@comm-it.cloud` | Project Viewer for assessment; no explicit secret access |
 
-### Why six service accounts?
+Build and deploy GitHub Actions were observed successful. Cloud Run service IAM was checked live: `meridian-poc-ci-deploy` has `roles/run.developer` at service scope, and `allUsers` has `roles/run.invoker` for the public PoC.
 
-The request has one deployer, one API runtime and three developer SAs. We add a **sixth**, distinct migration runtime SA, to avoid giving developer-trigger identities database DDL access.
+## Private database and secret handling
 
-### Two Terraform trust zones
+Cloud SQL PostgreSQL 16 uses a private IP only and `cloudsql.iam_authentication=on`. The Python Connector authenticates as the API runtime SA. The live `GET /health` probe returned `db=ok` after `SELECT 1`; this does not prove schema/table grants or migrations. The API reads two synthetic Secret Manager values at request time; its SQL connection uses IAM, **not** the stored password. The proposed `db_secret_reader` group was **not created**.
 
-1. **Bootstrap**, run by a privileged administrator, creates the GCS state bucket and *all six* SAs and their project-level IAM bindings.
-2. **PoC**, run by the deployer SA, creates the application infrastructure and grants resource-level secret and service access. The deployer cannot directly grant itself arbitrary project IAM roles.
+Terraform state contains generated PoC secret payloads. Therefore even the read-only Plan SA's state object access is security-sensitive. Restrict its GitHub Environment and do not publish state or raw plan files.
 
-The predefined project roles in bootstrap are **not perfect least privilege**: some roles can manage all corresponding resources in the dedicated project. To harden production, replace them with narrowly tailored custom roles and split duties across more projects or deployment identities. Grant `roles/iam.serviceAccountTokenCreator` to the human or CI identity **only on the deployer SA**, out of band during administrator bootstrap, not to the deployer itself. Never generate a JSON key.
+## Terraform state bucket hardening — verified
 
-### Three developers
+Bucket: `commitask01-tfstate-238671625358`; versioning enabled, uniform bucket-level access and public access prevention enforced.
 
-The `developer_emails` variable takes an optional mapping, which must be supplied once the human identities are known. Each human can impersonate their own developer SA only. When the migration Job is implemented, grant `roles/run.invoker` **on that specific Job** to each developer SA, not at the project level; do not grant `run.jobs.runWithOverrides`. IAM policy and database SQL grants are distinct.
+Terraform bootstrap now manages **empty** role-authoritative bindings for `roles/storage.legacyBucketOwner`, `roles/storage.legacyBucketReader`, `roles/storage.legacyObjectOwner`, and `roles/storage.legacyObjectReader`. The operator successfully applied four additions and inspected the live bucket IAM. The resulting bindings contained **only**:
 
-### Cloud SQL IAM DB login
+- `user:karu.lior@gmail.com` — bucket-scoped `roles/storage.admin` (permanent operator access).
+- `meridian-poc-deployer` SA — bucket-scoped `roles/storage.objectAdmin`.
+- `meridian-poc-plan` SA — bucket-scoped `roles/storage.objectViewer`.
 
-Cloud SQL for PostgreSQL is configured with `cloudsql.iam_authentication=on`. `google_sql_user.api_iam` registers a `CLOUD_IAM_SERVICE_ACCOUNT` database principal, whose username is the SA email without `.gserviceaccount.com`. The Python Connector uses Application Default Credentials of the Cloud Run runtime SA, `enable_iam_auth=True`, and `IPTypes.PRIVATE` to obtain short-lived tokens. The connector needs egress to Google APIs on TCP 443 and Cloud SQL on TCP 3307. <https://docs.cloud.google.com/sql/docs/postgres/iam-logins>
+No legacy projectViewer/projectEditor convenience bindings remained. Removing legacy BucketOwner before adding bucket-scoped operator Storage Admin temporarily caused `storage.buckets.getIamPolicy` denial. A temporary **project-level** Storage Admin grant was applied via Terraform for recovery. The operator subsequently added the permanent **bucket-level** grant through Terraform, restored access and prepared a `0 add, 0 change, 1 destroy` plan to remove the project-level temporary grant. **Its cleanup apply and subsequent project IAM verification were not yet observed.**
 
-IAM login proves identity, **not** database privileges. PostgreSQL `GRANT` for tables/schemas must be provisioned separately when the application uses real tables. The exercise's `SELECT 1` probe proves the DB login and query path, not schema privileges.
+`terraform/bootstrap/security_hardening.tf` also maintains project `roles/editor` with **no members**, to remove the unused default Compute Engine SA's previous Editor grant. Verify live project IAM after cleanup. These bindings are authoritative for their specific roles; external additions will be removed by a subsequent Terraform apply.
 
-### Conflict with the exercise's literal wording
+## Remaining limitations
 
-The exercise asks for **two secrets: database password and third-party API token**. Both are now implemented and read by the API per request; the password belongs to a separate built-in PostgreSQL user that the API does **not** use for database login. The API continues to use automatic IAM database authentication. The proposed future group `db_secret_reader` is NOT provisioned or granted access yet (requires directory-backed identity and a reviewed IAM binding); it is intended to read only the password secret, while the API SA receives scoped access to both secrets to satisfy the exercise's runtime-read requirement. This is an explicitly documented PoC concession to the exercise, not our preferred production password-handling architecture. See `docs/SECRETS-DESIGN.md`.
-
-### Outstanding verification
-
-- Confirm provider resources and IAM policy scope with `terraform validate` and a plan.
-- Verify automatic IAM database login in a deployed instance; verify public IP is disabled.
-- Prove runtime has no schema DDL and developers have no direct SQL access.
-- Verify Cloud SQL API, Private Google Access and egress routing on live Cloud Run.
-- Never claim a migration Job exists or works until implemented and tested.
-
-
-## Review amendment — 2026-11-11
-
-The bootstrap has a `terraform_operator_email` variable that grants a named human `roles/iam.serviceAccountTokenCreator` only on the deployer SA (not project-wide). The operator must supply their actual account email when bootstrapping; an empty default creates no binding.
-
-We **did not** add a project-wide `roles/iam.serviceAccountViewer`: the deployer already has `roles/iam.serviceAccountUser` directly on the API and migration SAs, and that role includes `iam.serviceAccounts.get`, which is required by the two `data.google_service_account` lookups. This is a more restrictive IAM boundary. Confirm the effective permissions with a live Terraform plan; investigate any missing API/identity role only if observed.
-
-
-## Commit reviewer — project-wide read-only access (2026-11-11)
-
-Bootstrap grants `roles/viewer` on project `commitask01` to the external reviewer `user:gcp-hr@comm-it.cloud` using `google_project_iam_member.commit_reviewer_viewer`. This provides project-wide resource inspection without modification permissions. Basic Viewer does **not** provide `secretmanager.versions.access` (secret values) and does not independently grant `storage.objects.get` on the Terraform state bucket, which contains generated secret payloads. Never grant `roles/secretmanager.secretAccessor` or `roles/storage.objectViewer` merely for interview review.
-
-This is an intended binding in the **privileged bootstrap root**, not yet applied to GCP. Validate its actual existence after `terraform apply`. Read-only inspection may be limited for some services without extra service-specific roles; add only if a demonstrated review need justifies it.
-
-
-## Security review — 2026-11-11: identities not used yet
-
-The three `dev1/dev2/dev3` service accounts and `migration` service account are **future architecture scaffolding** only. The migration Cloud Run Job is not implemented, no developer SAs have a Job-specific Run Invoker grant, and the migration SA has not been exercised in a runtime. Their presence does not constitute working migrations. To truly enforce minimal privileges while the Job is absent, a later cleanup should defer both the migration identity and its Cloud SQL roles until the migration capability exists, or implement the job and permission boundary fully.
-
-The GitHub PR workflow no longer impersonates the deployer; the full-write WIF binding was removed. A future CI plan SA must have separately reviewed rights and understand that Terraform state currently contains generated password/token values. See `docs/CI-CD.md`.
-
-
-## 2026-11-11 audit: reviewer principal and plan-only WIF
-
-The reviewer address `gcp-hr@comm-it.cloud` **cannot be verified as a user or group from its email or public web lookup**. Bootstrap now accepts `reviewer_principal_type = "user" | "group"` (default `user`). Before applying, the project owner must confirm the identity type from Commit or Google Workspace/Cloud Identity admin. The project-wide Viewer binding will then use the correct `user:` or `group:` prefix. No Google Workspace group has been created by this PoC.
-
-Bootstrap also creates `meridian-poc-plan` SA separate from `meridian-poc-deployer`: project Viewer and IAM Security Reviewer only, plus `roles/storage.objectViewer` on the state bucket, and WIF `workloadIdentityUser` bound solely to this plan SA. The trusted main-branch manual workflow can plan but not apply. Caution: state reading exposes Terraform-generated secret payloads; protect the GitHub Environment and branch.
-
-
-## Artifact Registry least-privilege refinement — 2026-11-11
-
-The regional Docker repository is created and IAM-managed by the privileged bootstrap root. The `meridian-poc-deployer` service account no longer has project-wide `roles/artifactregistry.admin`; it retains repository-scoped `roles/artifactregistry.writer` for publishing images. No extra Reader role is necessary for that publisher. Cloud Run's service agent image-pull access should be checked during first real deployment. These changes are committed but have not yet been applied or validated against GCP.
-
-
-## Least-privilege GitHub builder — 2026-11-11
-
-A new meridian-poc-builder SA receives repository-scoped roles/artifactregistry.writer only, not project-wide Artifact Registry, database, Cloud Run, Secret Manager, or state access. A distinct github-build WIF provider checks immutable repository and owner IDs, main push event and exact Docker workflow_ref. Unique attribute.pipeline on the build provider isolates this impersonation binding from the existing github-plan provider. Bootstrap must be applied again before use. Protect main branch from unreviewed workflow edits.
-
-
-## Image publishing separation — 2026-11-11
-
-The old Deployer `roles/artifactregistry.writer` repository binding was removed from Bootstrap Terraform. The GitHub builder SA alone has a repository-scoped Writer grant. Cloud Run deployment is performed by the Deployer SA without registry publishing privileges; verify actual image-pull permissions via the Cloud Run service agent during first deployment. Apply the Bootstrap plan to revoke the old live Deployer Writer IAM binding.
+- Public HTTP ingress and `allUsers` Invoker are appropriate only for the isolated PoC.
+- Migration job and real database schema grants are not implemented.
+- Project-level infrastructure admin roles are functional predefined roles rather than production custom least-privilege roles.
+- Confirm restricted `gcp-plan` GitHub Environment if the manual state-reading workflow is used.
+- Check project `roles/editor` and `roles/storage.admin` after temporary cleanup; run fresh Bootstrap and PoC plans. The PoC plan previously showed an in-place Cloud Run client/scaling metadata difference after CI deployment, not a rollback of the image.
