@@ -108,3 +108,14 @@ We propose a Cloud Identity/Google Workspace group named `db_secret_reader` for 
 ## GitHub Actions
 
 CI configuration and the required GitHub repository variables and `gcp-plan` environment are described in `docs/CI-CD.md`. The current workflow uses Workload Identity Federation and never stores a JSON key.
+
+
+## Granting Commit reviewer access
+
+The bootstrap Terraform root creates a project-level `roles/viewer` IAM binding for `gcp-hr@comm-it.cloud`. The identity can inspect GCP resources but has no permission from that role to access Secret Manager secret **payloads** or Terraform state **objects**. After applying bootstrap, verify with:
+
+```powershell
+gcloud projects get-iam-policy commitask --flatten="bindings[].members" --filter="bindings.role=roles/viewer AND bindings.members=gcp-hr@comm-it.cloud" --format="table(bindings.role,bindings.members)"
+```
+
+The command checks policy membership; it is not an authorization simulator. Confirm the external user can actually access the project with their Google identity and only add service-specific read roles if required for the review.
