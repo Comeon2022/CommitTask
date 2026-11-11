@@ -71,3 +71,17 @@ Before production use, obtain approved architecture and controls covering IAM/se
 - Workload Identity Federation: https://docs.cloud.google.com/iam/docs/workload-identity-federation
 
 These links support general GCP behavior. They do not resolve Meridian's unanswered business, security or compliance requirements.
+
+---
+
+## Architecture amendment — 2026-11-11: identity separation and Cloud SQL IAM login
+
+**Status:** Supersedes any earlier PoC assumption that the API uses a built-in PostgreSQL username/password or that all Terraform steps run under a single unconstrained human identity. This update does not change the previously committed customer email.
+
+- **Identity bootstrap:** An authorized administrator first provisions six distinct service accounts (Terraform deployer, API Cloud Run runtime, future migration Job runtime, and dev1/dev2/dev3) using `terraform/bootstrap`. The normal Terraform deployer receives role-specific infrastructure rights, but no Owner/Editor or project-level IAM administration.
+- **Database authentication:** The API authenticates to Cloud SQL PostgreSQL using its runtime service account via automatic IAM DB authentication and short-lived credentials from the Python Connector. The API has `roles/cloudsql.client` and `roles/cloudsql.instanceUser`; Cloud SQL separately registers its IAM database user. Table and schema permissions require PostgreSQL GRANTs.
+- **Developer access:** Human developers impersonate only their own developer service account. Once the approved Cloud Run migration Job exists, they will be allowed to execute that particular Job but not modify it or connect directly to SQL. The Job runs as a separate migration SA.
+- **Acceptance trade-off:** The original exercise explicitly demands storing a database password and an API token in GCP. Removing the password in favor of IAM authentication is a **deliberate deviation** from that literal requirement, and the current PoC has just one API token secret. This must be discussed at review or reconciled before submission; do not claim all exercise requirements are satisfied.
+- **Validation:** These changes exist as source configuration only. GCP IAM, Terraform plans, and actual database login are not validated yet.
+
+For detailed rights and rationale see `docs/IAM-DESIGN.md`.
