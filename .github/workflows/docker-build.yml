@@ -1,4 +1,4 @@
-name: Build and publish API image (main)
+name: Build and deploy API (main)
 
 on:
   push:
@@ -19,6 +19,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       WIF_PROVIDER: ${{ vars.GCP_BUILD_WIF_PROVIDER }}
@@ -65,6 +67,8 @@ jobs:
           file: ./app/Dockerfile
           push: true
           tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          build-args: |
+            SOURCE_COMMIT=${{ github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -86,5 +90,82 @@ jobs:
             echo "- **Immutable image:** \`$IMAGE_REF\`"
             echo "- **Builder SA:** \`$BUILDER_SA\` (Artifact Registry writer on repository only)"
             echo ""
-            echo "No infrastructure apply or Cloud Run deployment was performed."
+            echo "The deploy job will update only the existing Cloud Run API service."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy existing Cloud Run API and verify health
+    needs: publish
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      WIF_PROVIDER: ${{ vars.GCP_DEPLOY_WIF_PROVIDER }}
+      DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
+      IMAGE_NAME: europe-west1-docker.pkg.dev/commitask01/meridian-poc/api
+      IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - name: Check trusted deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_ID" = "commitask01"
+          test -n "$WIF_PROVIDER"
+          test "$DEPLOY_SA" = "meridian-poc-ci-deploy@commitask01.iam.gserviceaccount.com"
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+
+      - name: Authenticate via separate deploy-only OIDC provider
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_DEPLOY_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Install Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Update only the existing service image
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services update meridian-poc-api \
+            --project="$PROJECT_ID" \
+            --region=europe-west1 \
+            --image="${IMAGE_NAME}@${IMAGE_DIGEST}" \
+            --quiet
+
+      - name: End-to-end health gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEALTH_URL="https://meridian-poc-api-egkkxtz23a-ew.a.run.app/health"
+          curl --fail-with-body --silent --show-error --retry 3 --retry-delay 3 \
+            --output health.json "$HEALTH_URL"
+          python3 - <<'PY'
+          import json, os
+          with open('health.json', encoding='utf-8') as fh:
+              data = json.load(fh)
+          expected_sha = os.environ['SOURCE_SHA']
+          if not (data.get('commit') == expected_sha and
+                  data.get('db') == 'ok' and data.get('secret') == 'ok'):
+              raise SystemExit('Health response failed expected SHA, DB or Secret checks: ' + repr(data))
+          print('Verified deployed source SHA, live Cloud SQL and live Secret Manager.')
+          PY
+          rm -f health.json
+
+      - name: Record deployed immutable release
+        shell: bash
+        run: |
+          {
+            echo "## Cloud Run deployment"
+            echo ""
+            echo "- Service: \`meridian-poc-api\` (europe-west1)"
+            echo "- Commit: \`$SOURCE_SHA\`"
+            echo "- Image: \`${IMAGE_NAME}@${IMAGE_DIGEST}\`"
+            echo "- Health: verified HTTP 200, SQL=ok, Secrets=ok"
+            echo "- Identity: \`$DEPLOY_SA\` (service-scoped Cloud Run Developer)"
           } >> "$GITHUB_STEP_SUMMARY"
