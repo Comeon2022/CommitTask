@@ -1,6 +1,6 @@
 # GitHub Actions trust boundaries — revised 2026-11-11
 
-**Status:** Terraform source and workflow committed; bootstrap and CI runs NOT executed. GCP project: `commitask` (`924903658971`).
+**Status:** Initial bootstrap completed and converged per operator report. The new builder identity and build WIF provider are pending an additional bootstrap apply; image-build workflow has not been tested. GCP project: `commitask` (`924903658971`).
 
 ## Pull requests: no cloud credentials
 
@@ -57,10 +57,10 @@ After bootstrap and first image publishing, run `scripts/configure-github-vars.p
 
 ## Work remaining
 
-- Terraform `fmt/validate`, GCP bootstrap and successful plan execution **not verified yet**.
+- Initial bootstrap apply and no-change plan succeeded per operator; new builder-related bootstrap changes **still need apply**. Terraform PoC `validate` succeeded per operator; image build, CI and application deployment remain unverified.
 - Confirm GitHub environment is protected before running cloud plans.
 - Confirm service account role and GCS backend read paths by a real plan.
-- Reviewer `gcp-hr@comm-it.cloud` may be a **user or Google Group**; the type cannot be inferred from email. Bootstrap now has `reviewer_principal_type`, default `user`, and must be set to `group` if directory ownership confirms it is a group.
+- Google Cloud rejected `user:gcp-hr@comm-it.cloud` and explicitly identified the identity as a **group**; operator corrected `reviewer_principal_type = "group"` and bootstrap reached no changes. Keep this local input value on every subsequent bootstrap plan/apply.
 - Document AI corrections in the full original conversation transcript before handing over.
 
 
@@ -71,3 +71,21 @@ After bootstrap and first image publishing, run `scripts/configure-github-vars.p
 **Read-only CI plan:** `google_secret_manager_secret_version` resources may require `secretmanager.versions.access` when Terraform refreshes them. The separate plan-only SA deliberately does **not** have this permission. The trusted-main workflow now calls `terraform plan -refresh=false` to compare configuration with saved state without attempting a normal refresh of managed Secret Manager versions. This is a **state-based plan only**, not drift detection, and may not work if a provider schema/state migration requires refresh. Other Terraform data sources may still be read during planning. Verify behavior with a real GitHub Actions run; do not imply the plan has already passed.
 
 **Security limitation:** Because the current Terraform state includes generated secret values, the plan SA's bucket-level Object Viewer already represents sensitive state access. A long-term solution is to seed secrets outside Terraform or use properly supported write-only secret inputs and segregated state, and only then enable richer CI refresh or PR plans. Do not grant Secret Accessor merely to suppress a CI error.
+
+## Keyless GitHub Docker builder — 2026-11-11
+
+**Workflow:** `.github/workflows/docker-build.yml`, triggered by a push to `main` and using only `contents:read` and `id-token:write`. It checks out the source revision, obtains a short-lived Google OAuth token through WIF, builds the `app/Dockerfile`, pushes `europe-west1-docker.pkg.dev/commitask/meridian-poc/api:<full-git-sha>`, and reports its **immutable digest** and matching commit SHA in the GitHub Actions job summary. No Cloud Run deployment, Terraform state access, Secret Manager permission, long-lived key or Terraform apply.
+
+**New SA:** `meridian-poc-builder@commitask.iam.gserviceaccount.com`. Bootstrap grants **only** `roles/artifactregistry.writer` at the repository level (`meridian-poc` in `europe-west1`). There are no project-wide roles for this SA.
+
+**Dedicated OIDC provider:** `projects/924903658971/locations/global/workloadIdentityPools/meridian-github/providers/github-build`. This provider validates immutable repo/owner IDs, full repo name, `push` event, `refs/heads/main`, and the exact workflow reference path. Its unique `attribute.pipeline = 'main-docker-build'` prevents the existing `github-plan` provider from accidentally reusing the builder impersonation binding. The builder's `roles/iam.workloadIdentityUser` IAM binding targets **only** this pipeline attribute on this SA. Neither provider can impersonate the deployer using these bindings.
+
+**First-time setup:** An existing project bootstrap was already applied. Therefore:
+1. Update the local repository with `git pull origin main` (ensure `terraform/bootstrap/terraform.tfvars` still contains `reviewer_principal_type = "group"` and operator details).
+2. Re-run `terraform init`, `validate`, `plan` in `terraform/bootstrap` and review the *additional* proposed resources (builder SA, WIF provider, SA impersonation binding and repository IAM writer).
+3. `terraform apply` using an approved saved plan, then verify `terraform plan` gives no changes.
+4. From repository root run `gh auth login` if required, then `.\\scripts\\configure-build-vars.ps1`. This sets `GCP_PROJECT_ID`, `GCP_BUILD_SA` and `GCP_BUILD_WIF_PROVIDER` as **nonsecret repository Actions variables**. The connector cannot modify these GitHub settings itself.
+5. Protect `main` with required reviews, restrict who can push/merge and alter workflows. The builder relies on **trusted main**. Wait for IAM/WIF policy propagation and inspect the **Build and publish API image (main)** workflow in GitHub Actions; any new main push builds an image. The first committed workflow may fail before bootstrap/variables are configured; **rerun it** after setup or push a reviewed follow-up change.
+6. Copy the SHA and digest from the build summary into the **manual, reviewed** PoC Terraform plan. Do not deploy by a mutable tag and do not claim the image has been deployed simply because it was pushed.
+
+**No new GitHub credential secrets required.** No Terraform apply from the build job. `github-plan` remains a distinct, manually invoked read-only state-based plan with `-refresh=false`. The builder must never be given `roles/run.admin`, `roles/cloudsql.admin`, `roles/secretmanager.secretAccessor`, or access to the state bucket.
