@@ -108,6 +108,14 @@ resource "google_service_account" "identity" {
   depends_on   = [google_project_service.iam]
 }
 
+# Scope Terraform state access to this bucket instead of all project storage.
+# GCS backend requires object read/write/list/delete in the dedicated state bucket.
+resource "google_storage_bucket_iam_member" "deployer_state" {
+  bucket = google_storage_bucket.terraform_state.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.identity["deployer"].email}"
+}
+
 resource "google_project_iam_member" "deployer" {
   for_each = local.deployer_roles
   project  = var.project_id
