@@ -1,0 +1,36 @@
+# Terraform local files and sensitive state
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl.backup
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*service-account*.json
+*credentials*.json
+*.p12
+
+# Python, Node and IDE files
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+dist/
+.next/
+.vscode/
+.idea/
+.DS_Store
