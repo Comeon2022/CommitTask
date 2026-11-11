@@ -7,7 +7,7 @@ param(
   [Parameter(Mandatory=$true)][string]$StateBucket,
   [Parameter(Mandatory=$true)][string]$SourceSha,
   [Parameter(Mandatory=$true)][string]$ImageDigest,
-  [string]$ProjectId = "commitask",
+  [string]$ProjectId = "commitask01",
   [ValidateSet("europe-west1","europe-west3","europe-west4")][string]$Region = "europe-west1"
 )
 $ErrorActionPreference = "Stop"
