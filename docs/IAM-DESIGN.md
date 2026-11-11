@@ -65,3 +65,10 @@ This is an intended binding in the **privileged bootstrap root**, not yet applie
 The three `dev1/dev2/dev3` service accounts and `migration` service account are **future architecture scaffolding** only. The migration Cloud Run Job is not implemented, no developer SAs have a Job-specific Run Invoker grant, and the migration SA has not been exercised in a runtime. Their presence does not constitute working migrations. To truly enforce minimal privileges while the Job is absent, a later cleanup should defer both the migration identity and its Cloud SQL roles until the migration capability exists, or implement the job and permission boundary fully.
 
 The GitHub PR workflow no longer impersonates the deployer; the full-write WIF binding was removed. A future CI plan SA must have separately reviewed rights and understand that Terraform state currently contains generated password/token values. See `docs/CI-CD.md`.
+
+
+## 2026-11-11 audit: reviewer principal and plan-only WIF
+
+The reviewer address `gcp-hr@comm-it.cloud` **cannot be verified as a user or group from its email or public web lookup**. Bootstrap now accepts `reviewer_principal_type = "user" | "group"` (default `user`). Before applying, the project owner must confirm the identity type from Commit or Google Workspace/Cloud Identity admin. The project-wide Viewer binding will then use the correct `user:` or `group:` prefix. No Google Workspace group has been created by this PoC.
+
+Bootstrap also creates `meridian-poc-plan` SA separate from `meridian-poc-deployer`: project Viewer and IAM Security Reviewer only, plus `roles/storage.objectViewer` on the state bucket, and WIF `workloadIdentityUser` bound solely to this plan SA. The trusted main-branch manual workflow can plan but not apply. Caution: state reading exposes Terraform-generated secret payloads; protect the GitHub Environment and branch.
