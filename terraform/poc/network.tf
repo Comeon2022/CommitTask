@@ -18,12 +18,12 @@ variable "project_id" {
 
 variable "region" {
   type        = string
-  description = "Single approved region for all regional Meridian PoC resources."
+  description = "Single deployment region selected from approved EU regions for all regional Meridian PoC resources."
   default     = "europe-west1"
 
   validation {
-    condition     = var.region == "europe-west1"
-    error_message = "This PoC is approved for europe-west1 only; update the architecture decision before changing regions."
+    condition     = contains(["europe-west1", "europe-west3", "europe-west4"], var.region)
+    error_message = "Choose one approved EU region: europe-west1, europe-west3, or europe-west4."
   }
 }
 
