@@ -1,4 +1,11 @@
-# Copy to terraform.tfvars locally. State bucket names must be globally unique.
+# Copy locally to terraform.tfvars (never commit real identities).
 project_id        = "YOUR_GCP_PROJECT_ID"
 region            = "europe-west1"
 state_bucket_name = "YOUR_GLOBALLY_UNIQUE_GCS_BUCKET_NAME"
+
+# Omit these until actual Google accounts are available.
+# developer_emails = {
+#   dev1 = "dev1@example.com"
+#   dev2 = "dev2@example.com"
+#   dev3 = "dev3@example.com"
+# }
