@@ -6,6 +6,7 @@ resource "google_sql_database_instance" "postgres" {
 
   settings {
     tier              = "db-f1-micro"
+    edition           = "ENTERPRISE"
     availability_type = "ZONAL"
     disk_type         = "PD_SSD"
     disk_size         = 10
@@ -59,7 +60,11 @@ resource "google_secret_manager_secret" "db_password" {
   secret_id = "meridian-poc-db-password"
 
   replication {
-    auto {}
+    user_managed {
+      replicas {
+        location = "europe-west1"
+      }
+    }
   }
 
   depends_on = [google_project_service.required]
