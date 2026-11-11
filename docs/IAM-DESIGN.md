@@ -82,3 +82,8 @@ The regional Docker repository is created and IAM-managed by the privileged boot
 ## Least-privilege GitHub builder — 2026-11-11
 
 A new meridian-poc-builder SA receives repository-scoped roles/artifactregistry.writer only, not project-wide Artifact Registry, database, Cloud Run, Secret Manager, or state access. A distinct github-build WIF provider checks immutable repository and owner IDs, main push event and exact Docker workflow_ref. Unique attribute.pipeline on the build provider isolates this impersonation binding from the existing github-plan provider. Bootstrap must be applied again before use. Protect main branch from unreviewed workflow edits.
+
+
+## Image publishing separation — 2026-11-11
+
+The old Deployer `roles/artifactregistry.writer` repository binding was removed from Bootstrap Terraform. The GitHub builder SA alone has a repository-scoped Writer grant. Cloud Run deployment is performed by the Deployer SA without registry publishing privileges; verify actual image-pull permissions via the Cloud Run service agent during first deployment. Apply the Bootstrap plan to revoke the old live Deployer Writer IAM binding.
