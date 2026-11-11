@@ -97,14 +97,10 @@ The `/health` handler must return a 200 JSON response with correct name/actual c
 - Keep the environment running until the review, then tear down with Terraform.
 
 
-## Google Group `db_secret_reader` (optional until directory setup)
+## Future Google Group design (NOT implemented)
 
-The Google Group must exist in Cloud Identity/Google Workspace, with a valid email address such as `db_secret_reader@YOUR_DOMAIN`. A display name alone is not sufficient. In the local `terraform/poc/terraform.tfvars` file set:
+We propose a Cloud Identity/Google Workspace group named `db_secret_reader` for selected human users to read **only** the DB-password secret. This currently requires directory provisioning and a verified group email, so **no Google Group membership, IAM policy binding, or related Terraform variable exists**. Do not configure a placeholder email. See `docs/SECRETS-DESIGN.md`.
 
-```hcl
-db_secret_reader_group_email = "db_secret_reader@YOUR_DOMAIN"
-```
+## GitHub Actions
 
-Terraform attaches `roles/secretmanager.secretAccessor` to **only the DB-password secret** for that group. If the variable is empty, the binding is not created; do not claim group access exists until the IAM policy is applied and verified. Group members do not automatically get VPC or Cloud SQL access.
-
-For the interview's exact two-secret health contract, the Cloud Run SA also reads the DB-password secret (but **never authenticates with it**). In production we would remove this extra permission. Confirm the IAM policy on both secrets before submitting.
+CI configuration and the required GitHub repository variables and `gcp-plan` environment are described in `docs/CI-CD.md`. The current workflow uses Workload Identity Federation and never stores a JSON key.
