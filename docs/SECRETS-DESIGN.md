@@ -56,3 +56,8 @@ See `CLARIFICATIONS.md`, `ASSUMPTIONS.md`, `docs/IAM-DESIGN.md`.
 ## Residency amendment — 2026-11-11
 
 Both Secret Manager resources now use **user-managed replication with one replica in `var.region`, defaulting to `europe-west1` (Belgium) and restricted to an approved EU region (`europe-west1`, `europe-west3`, or `europe-west4`)**. The former `replication { auto {} }` allowed secret payload replication outside Europe. This is a documented EU-location assumption for the evaluation, not a formal GDPR/PCI compliance certification. The region is intentionally fixed to the selected EU PoC region until the customer approves a different data-residency plan. Replication location is immutable after secret creation; no deployment has occurred yet.
+
+
+## Security review — 2026-11-11: unused SQL password principal
+
+`meridian_secret_user` is a **real local-password account** created solely to satisfy the exercise's two-secret requirement. It is not used for API database connections: the application continues to use IAM database authentication. The password is read for the interview's per-request secret-access check, which means this design is intentionally less restrictive than an ideal production system. Before production, remove this account and the API's unused-password read permission after customer approval, and seed any required secrets outside Terraform state.
