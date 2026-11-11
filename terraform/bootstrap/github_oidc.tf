@@ -1,8 +1,19 @@
-# Workload Identity Federation for GitHub Actions (PR plan only).
-# GitHub repository identity is immutable by ID, protecting against repo-name reuse.
+# Workload Identity Federation for GitHub Actions (future trusted main-branch only).
+# Repo identifiers are parameterized and checked by immutable ID.
 # This is provisioned by privileged bootstrap Terraform, never by the deployer.
-data "google_project" "current" {
-  project_id = var.project_id
+variable "github_repository_full_name" {
+  type        = string
+  description = "Trusted GitHub repo owner/name."
+}
+
+variable "github_repository_id" {
+  type        = string
+  description = "Immutable numeric GitHub repository ID."
+}
+
+variable "github_owner_id" {
+  type        = string
+  description = "Immutable numeric GitHub owner ID."
 }
 
 resource "google_project_service" "sts" {
@@ -32,7 +43,7 @@ resource "google_iam_workload_identity_pool_provider" "github_pr" {
   project                            = var.project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-pr"
-  display_name                       = "CommitTask PR plans"
+  display_name                       = "CommitTask trusted dispatch"
 
   attribute_mapping = {
     "google.subject"       = "assertion.sub"
@@ -41,22 +52,20 @@ resource "google_iam_workload_identity_pool_provider" "github_pr" {
 
   # Only the selected repository and PR event can exchange an OIDC token.
   # The GitHub workflow additionally refuses forks and has no auto-apply.
-  attribute_condition = "assertion.repository_id == '1453727041' && assertion.repository_owner_id == '104059889' && assertion.event_name == 'pull_request'"
+  attribute_condition = "assertion.repository_id == '${var.github_repository_id}' && assertion.repository_owner_id == '${var.github_owner_id}' && assertion.repository == '${var.github_repository_full_name}' && assertion.ref == 'refs/heads/main' && assertion.event_name == 'workflow_dispatch'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
   }
 }
 
-resource "google_service_account_iam_member" "github_pr_deployer" {
-  service_account_id = google_service_account.identity["deployer"].name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.repository/Comeon2022/CommitTask"
-}
+# SAFETY HOLD:
+# No Workload Identity User impersonation grant is created for the deployer here.
+# The PR workflow is credential-free. Future privileged workflows must have a
+# separate vetted identity and environment/branch approvals before IAM grants.
 
 output "github_workload_identity_provider" {
   value = google_iam_workload_identity_pool_provider.github_pr.name
 }
 
-# This PR workflow uses the deployer SA for read-only Terraform plan operations.
-# A separate plan-only identity is recommended for production. No automatic apply.
+# The provider alone does not grant GCP permissions. No authenticated CI job is active.
