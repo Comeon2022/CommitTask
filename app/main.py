@@ -1,70 +1,82 @@
-"""Minimal Meridian evaluation API. Checks are performed for every /health request."""
+"""Meridian PoC: public health contract with actual IAM-authenticated SQL query."""
 import os
+import threading
+
 from flask import Flask, jsonify
-import psycopg2
 from google.cloud import secretmanager
+from google.cloud.sql.connector import Connector, IPTypes
 
 app = Flask(__name__)
-
 PROJECT_ID = os.environ["PROJECT_ID"]
 REGION = os.environ["REGION"]
 CANDIDATE = os.environ["CANDIDATE"]
 DEPLOYED_COMMIT = os.environ["DEPLOYED_COMMIT"]
-DB_HOST = os.environ["DB_HOST"]
+INSTANCE_CONNECTION_NAME = os.environ["INSTANCE_CONNECTION_NAME"]
 DB_NAME = os.environ["DB_NAME"]
-DB_USER = os.environ["DB_USER"]
-DB_PASSWORD_SECRET = os.environ["DB_PASSWORD_SECRET"]
+DB_IAM_USER = os.environ["DB_IAM_USER"]
 PROVIDER_TOKEN_SECRET = os.environ["PROVIDER_TOKEN_SECRET"]
 
-secret_client = secretmanager.SecretManagerServiceClient()
+_secret_client = secretmanager.SecretManagerServiceClient()
+_connector = None
+_connector_lock = threading.Lock()
 
 
-def read_secret(secret_id: str) -> str:
-    name = f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"
-    result = secret_client.access_secret_version(request={"name": name})
-    payload = result.payload.data.decode("utf-8")
-    if not payload:
-        raise ValueError("Empty secret")
-    return payload
+def connector():
+    global _connector
+    if _connector is None:
+        with _connector_lock:
+            if _connector is None:
+                _connector = Connector(refresh_strategy="LAZY")
+    return _connector
+
+
+def read_provider_token() -> bool:
+    secret_name = (
+        f"projects/{PROJECT_ID}/secrets/{PROVIDER_TOKEN_SECRET}/versions/latest"
+    )
+    response = _secret_client.access_secret_version(request={"name": secret_name})
+    return bool(response.payload.data)
+
+
+def sql_probe() -> bool:
+    # The Cloud SQL Python Connector generates and refreshes temporary IAM tokens.
+    # PostgreSQL username is the runtime SA email minus .gserviceaccount.com.
+    with connector().connect(
+        INSTANCE_CONNECTION_NAME,
+        "pg8000",
+        user=DB_IAM_USER,
+        db=DB_NAME,
+        enable_iam_auth=True,
+        ip_type=IPTypes.PRIVATE,
+        timeout=10,
+    ) as connection:
+        cursor = connection.cursor()
+        try:
+            cursor.execute("SELECT 1")
+            return cursor.fetchone() == (1,)
+        finally:
+            cursor.close()
 
 
 @app.get("/health")
 def health():
-    db_status = "error"
-    secret_status = "error"
-
-    # Both reads happen on this request. An error remains visible to the caller.
-    try:
-        provider_token = read_secret(PROVIDER_TOKEN_SECRET)
-        if provider_token:
-            secret_status = "ok"
-    except Exception:
-        app.logger.exception("Unable to read provider token from Secret Manager")
+    secret_ok = False
+    db_ok = False
 
     try:
-        db_password = read_secret(DB_PASSWORD_SECRET)
-        with psycopg2.connect(
-            host=DB_HOST,
-            port=5432,
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=db_password,
-            connect_timeout=5,
-            sslmode="require",
-        ) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT 1")
-                if cursor.fetchone() == (1,):
-                    db_status = "ok"
+        secret_ok = read_provider_token()
     except Exception:
-        app.logger.exception("Database health query failed")
+        app.logger.exception("Secret Manager health check failed")
 
-    payload = {
+    try:
+        db_ok = sql_probe()
+    except Exception:
+        app.logger.exception("Cloud SQL IAM health check failed")
+
+    return jsonify({
         "candidate": CANDIDATE,
         "commit": DEPLOYED_COMMIT,
         "region": REGION,
-        "db": db_status,
-        "secret": secret_status,
-    }
-    status = 200 if db_status == "ok" and secret_status == "ok" else 503
-    return jsonify(payload), status
+        "db": "ok" if db_ok else "error",
+        "secret": "ok" if secret_ok else "error",
+    }), 200 if db_ok and secret_ok else 503
