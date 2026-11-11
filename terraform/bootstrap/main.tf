@@ -14,8 +14,14 @@ variable "project_id" {
 }
 
 variable "region" {
-  type    = string
-  default = "europe-west1"
+  type        = string
+  description = "Single approved region for all regional Meridian PoC resources."
+  default     = "europe-west1"
+
+  validation {
+    condition     = var.region == "europe-west1"
+    error_message = "This PoC is approved for europe-west1 only; update the architecture decision before changing regions."
+  }
 }
 
 variable "state_bucket_name" {
