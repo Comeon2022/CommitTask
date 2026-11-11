@@ -156,3 +156,16 @@ The separate independent Terraform roots each validate the same approved region 
 ## Interview reviewer access — 2026-11-11
 
 The Commit exercise requires Viewer access for `gcp-hr@comm-it.cloud`. To preserve least privilege, the privileged `terraform/bootstrap` root grants this exact user `roles/viewer` at the project `commitask` level. Do not add secret payload access or Terraform state object read roles: state contains both generated secret values. The IAM binding is **defined in source only** pending bootstrap apply and verification.
+
+
+---
+
+## Security audit — 2026-11-11: five reviewed findings
+
+1. **Privileged PR CI:** Confirmed unsafe to let PR-editable workflows impersonate a full-write Terraform deployer. Removed the authenticated `plan` job from GitHub Actions and deleted the WIF deployer impersonation binding. PRs now run formatting and validation without cloud credentials. Trusted plan/apply remain manual until separate identities and approvals exist.
+2. **GitHub OIDC identity literals:** Replaced repository name, repository ID and owner ID hardcoded in the provider with `github_repository_full_name`, `github_repository_id`, and `github_owner_id` input variables. ID examples remain documented for the current repository.
+3. **Manual image / commit drift:** Added `scripts/prepare-release.ps1` to build from the current clean Git commit, label the image with its revision, push it, obtain its immutable digest and generate a single saved Terraform plan with image and SHA together. This script does not auto-apply and has not yet been executed.
+4. **Unused identities/password:** The three developer SAs and migration runtime SA have no implemented migration Job workflow yet; they remain explicit scaffolding. The built-in PostgreSQL password account is deliberately not used for SQL login because the exercise requires two secrets while the API uses IAM DB authentication. These are accepted PoC trade-offs, not proof of runtime use. Follow-up: implement the migration job or remove unused identities before production.
+5. **Root container:** Added a non-root `USER 10001:10001` to the Dockerfile. Actual Docker build/run verification remains pending.
+
+This amendment supersedes previous text claiming PR Terraform plan/OIDC deployer impersonation is active. `CLARIFICATIONS.md` is not modified.
