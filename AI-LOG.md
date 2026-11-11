@@ -2,8 +2,7 @@
 
 ## Source conversation links and transcript completeness
 
-- Original ChatGPT session (account access): https://chatgpt.com/c/6af47a8e-8eac-83ed-b965-40dcc4e6fcbb
-- Shared session snapshot: https://chatgpt.com/share/6af479c1-ec48-83ed-9099-36e69d7b2d55
+- Shared session snapshot: https://chatgpt.com/share/6af47f6b-43e8-83eb-98f7-c15e4a0e3717
 - Partial browser HTML exports were inspected. The later snapshot contained 12 user messages and only 6 complete AI responses. These links and exports **do not satisfy** the exercise requirement to store every unedited AI exchange in this file. Credentials and keys may be redacted; missing assistant messages must not be fabricated.
 
 
