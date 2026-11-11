@@ -18,29 +18,22 @@ variable "candidate_full_name" {
   description = "Exact name given to Commit interview reviewers."
 }
 
-resource "google_service_account" "api" {
-  account_id   = "meridian-poc-api"
-  display_name = "Meridian API runtime identity"
-  depends_on   = [google_project_service.required]
+# Service accounts and project-level IAM are created by the privileged bootstrap root.
+# Regular infrastructure deployment cannot grant itself project IAM roles.
+data "google_service_account" "api" {
+  account_id = "meridian-poc-api"
+  project    = var.project_id
 }
 
-# Connector needs Cloud SQL Client; IAM database login needs Instance User.
-resource "google_project_iam_member" "api_cloudsql_client" {
-  project = var.project_id
-  role    = "roles/cloudsql.client"
-  member  = "serviceAccount:${google_service_account.api.email}"
-}
-
-resource "google_project_iam_member" "api_cloudsql_login" {
-  project = var.project_id
-  role    = "roles/cloudsql.instanceUser"
-  member  = "serviceAccount:${google_service_account.api.email}"
+data "google_service_account" "migration" {
+  account_id = "meridian-poc-migration"
+  project    = var.project_id
 }
 
 resource "google_secret_manager_secret_iam_member" "token_access" {
   secret_id = google_secret_manager_secret.provider_token.id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.api.email}"
+  member    = "serviceAccount:${data.google_service_account.api.email}"
 }
 
 resource "google_artifact_registry_repository" "api" {
@@ -58,7 +51,7 @@ resource "google_cloud_run_v2_service" "api" {
   ingress             = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = google_service_account.api.email
+    service_account = data.google_service_account.api.email
 
     scaling {
       min_instance_count = 0
@@ -121,8 +114,6 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.provider_token,
     google_secret_manager_secret_iam_member.token_access,
     google_artifact_registry_repository.api,
-    google_project_iam_member.api_cloudsql_client,
-    google_project_iam_member.api_cloudsql_login,
   ]
 }
 
