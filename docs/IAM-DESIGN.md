@@ -72,3 +72,8 @@ The GitHub PR workflow no longer impersonates the deployer; the full-write WIF b
 The reviewer address `gcp-hr@comm-it.cloud` **cannot be verified as a user or group from its email or public web lookup**. Bootstrap now accepts `reviewer_principal_type = "user" | "group"` (default `user`). Before applying, the project owner must confirm the identity type from Commit or Google Workspace/Cloud Identity admin. The project-wide Viewer binding will then use the correct `user:` or `group:` prefix. No Google Workspace group has been created by this PoC.
 
 Bootstrap also creates `meridian-poc-plan` SA separate from `meridian-poc-deployer`: project Viewer and IAM Security Reviewer only, plus `roles/storage.objectViewer` on the state bucket, and WIF `workloadIdentityUser` bound solely to this plan SA. The trusted main-branch manual workflow can plan but not apply. Caution: state reading exposes Terraform-generated secret payloads; protect the GitHub Environment and branch.
+
+
+## Artifact Registry least-privilege refinement — 2026-11-11
+
+The regional Docker repository is created and IAM-managed by the privileged bootstrap root. The `meridian-poc-deployer` service account no longer has project-wide `roles/artifactregistry.admin`; it retains repository-scoped `roles/artifactregistry.writer` for publishing images. No extra Reader role is necessary for that publisher. Cloud Run's service agent image-pull access should be checked during first real deployment. These changes are committed but have not yet been applied or validated against GCP.
