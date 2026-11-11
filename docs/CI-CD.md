@@ -89,3 +89,10 @@ After bootstrap and first image publishing, run `scripts/configure-github-vars.p
 6. Copy the SHA and digest from the build summary into the **manual, reviewed** PoC Terraform plan. Do not deploy by a mutable tag and do not claim the image has been deployed simply because it was pushed.
 
 **No new GitHub credential secrets required.** No Terraform apply from the build job. `github-plan` remains a distinct, manually invoked read-only state-based plan with `-refresh=false`. The builder must never be given `roles/run.admin`, `roles/cloudsql.admin`, `roles/secretmanager.secretAccessor`, or access to the state bucket.
+
+
+## Publisher permissions cleanup — 2026-11-11
+
+Once the CI builder was introduced, the former `google_artifact_registry_repository_iam_member.deployer_push` binding became unnecessary and is now **removed from Terraform source**. Only `meridian-poc-builder` receives repository-scoped `roles/artifactregistry.writer` for new images. `meridian-poc-deployer` retains infrastructure deployment permissions but cannot push images through this grant. The next privileged bootstrap `terraform plan` should show the old Deployer Writer binding being destroyed; review and apply that deliberate IAM revocation together with any pending builder resources. Do **not** run `terraform state rm`: the intended outcome is actually to revoke the live IAM member.
+
+`scripts/prepare-release.ps1` is now a **plan-only** script. Supply `-SourceSha` (the full 40-character GitHub Actions commit) and `-ImageDigest` (`sha256:...`) from the successful Docker build summary. It constructs the immutable Artifact Registry image URI and creates the PoC Terraform plan, without Docker build, Docker push or assuming the Deployer has Artifact Registry Writer. Confirm the image really exists and corresponds to that SHA before apply.
