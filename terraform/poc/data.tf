@@ -15,6 +15,11 @@ resource "google_sql_database_instance" "postgres" {
       private_network = google_compute_network.app.id
     }
 
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
+
     backup_configuration {
       enabled = true
     }
@@ -28,30 +33,12 @@ resource "google_sql_database" "app" {
   instance = google_sql_database_instance.postgres.name
 }
 
-resource "random_password" "database" {
-  length  = 32
-  special = false
-}
-
-resource "google_sql_user" "app" {
-  name     = "meridian_app"
+# IAM database login uses the *runtime service account* as the PostgreSQL principal.
+# Cloud SQL requires removing .gserviceaccount.com from Postgres SA usernames.
+resource "google_sql_user" "api_iam" {
+  name     = trimsuffix(google_service_account.api.email, ".gserviceaccount.com")
   instance = google_sql_database_instance.postgres.name
-  password = random_password.database.result
-}
-
-resource "google_secret_manager_secret" "database_password" {
-  secret_id = "meridian-poc-db-password"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [google_project_service.required]
-}
-
-resource "google_secret_manager_secret_version" "database_password" {
-  secret      = google_secret_manager_secret.database_password.id
-  secret_data = random_password.database.result
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
 }
 
 resource "random_password" "provider_token_placeholder" {
