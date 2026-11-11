@@ -4,7 +4,7 @@
 
 ## Confirmed identifiers
 
-Project ID: `commitask`; Project Number: `924903658971`; region: `europe-west1`. These were supplied by the project owner. No actual cloud resources have been inspected or deployed.
+Project ID: `commitask01`; Project Number: `238671625358`; region: `europe-west1`. These were supplied by the project owner. No actual cloud resources have been inspected or deployed.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ New billing-enabled GCP project; Terraform, Docker, Git and Google Cloud SDK ins
 ## Step 1 — bootstrap identities and remote state bucket
 
 ```powershell
-$ProjectId = "commitask"
+$ProjectId = "commitask01"
 $Region    = "europe-west1"
 $Bucket    = "YOUR_GLOBALLY_UNIQUE_BUCKET_NAME"
 
@@ -50,7 +50,7 @@ The human caller still needs read/write access to the backend bucket, or a worki
 The `meridian-poc` Docker repository is now defined in **`terraform/bootstrap/artifact_registry.tf`**, created as part of the initial privileged bootstrap apply in Step 1. No `terraform -target` is needed.
 
 ```powershell
-gcloud artifacts repositories describe meridian-poc --project=commitask --location=$Region
+gcloud artifacts repositories describe meridian-poc --project=commitask01 --location=$Region
 ```
 
 If absent, rerun **bootstrap Terraform** after checking its plan. Never push the application image before the repository exists.
@@ -61,10 +61,10 @@ From repository root, after operator impersonation has been granted in Bootstrap
 
 ```powershell
 .\scripts\prepare-release.ps1 -CandidateFullName "YOUR_ACTUAL_COMMIT_NAME" `
-  -StateBucket $Bucket -ProjectId commitask -Region $Region
+  -StateBucket $Bucket -ProjectId commitask01 -Region $Region
 ```
 
-The script checks the registry, sets `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` and `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT` to `meridian-poc-deployer@commitask.iam.gserviceaccount.com`, validates impersonation, builds from a clean Git commit, pushes, resolves an immutable image digest and creates a **saved** Terraform plan. It does not apply. The Docker push is performed via short-lived deployer credentials and its repository-specific Artifact Registry Writer permission.
+The script checks the registry, sets `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` and `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT` to `meridian-poc-deployer@commitask01.iam.gserviceaccount.com`, validates impersonation, builds from a clean Git commit, pushes, resolves an immutable image digest and creates a **saved** Terraform plan. It does not apply. The Docker push is performed via short-lived deployer credentials and its repository-specific Artifact Registry Writer permission.
 
 Inspect the saved plan before applying:
 
@@ -103,7 +103,7 @@ The GitHub Actions PR workflow remains **credential-free**. A separate `workflow
 The bootstrap Terraform root creates a project-level `roles/viewer` IAM binding for `gcp-hr@comm-it.cloud`. The identity can inspect GCP resources but has no permission from that role to access Secret Manager secret **payloads** or Terraform state **objects**. After applying bootstrap, verify with:
 
 ```powershell
-gcloud projects get-iam-policy commitask --flatten="bindings[].members" --filter="bindings.role=roles/viewer AND bindings.members=gcp-hr@comm-it.cloud" --format="table(bindings.role,bindings.members)"
+gcloud projects get-iam-policy commitask01 --flatten="bindings[].members" --filter="bindings.role=roles/viewer AND bindings.members=gcp-hr@comm-it.cloud" --format="table(bindings.role,bindings.members)"
 ```
 
 The command checks policy membership; it is not an authorization simulator. Confirm the external user can actually access the project with their Google identity and only add service-specific read roles if required for the review.
