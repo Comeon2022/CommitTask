@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars locally (never commit actual terraform.tfvars).
+project_id          = "YOUR_GCP_PROJECT_ID"
+region              = "europe-west1"
+subnet_cidr         = "10.42.0.0/24"
+candidate_full_name = "YOUR_EXACT_INTERVIEW_NAME"
+deployed_commit     = "0123456"
+container_image     = "europe-west1-docker.pkg.dev/YOUR_GCP_PROJECT_ID/meridian-poc/api@sha256:REPLACE_WITH_REAL_DIGEST"
