@@ -175,7 +175,7 @@ resource "google_iam_workload_identity_pool_provider" "github_main_deploy" {
     "attribute.pipeline"   = "'main-cloudrun-deploy'"
   }
 
-  attribute_condition = "assertion.repository_id == '${var.github_repository_id}' && assertion.repository_owner_id == '${var.github_owner_id}' && assertion.repository == '${var.github_repository_full_name}' && assertion.ref == 'refs/heads/main' && assertion.event_name == 'push' && assertion.workflow_ref == '${var.github_repository_full_name}/.github/workflows/docker-build.yml@refs/heads/main'"
+  attribute_condition = "assertion.repository_id == '${var.github_repository_id}' && assertion.repository_owner_id == '${var.github_owner_id}' && assertion.repository == '${var.github_repository_full_name}' && assertion.ref == 'refs/heads/main' && assertion.event_name == 'workflow_run' && assertion.workflow_ref == '${var.github_repository_full_name}/.github/workflows/cloudrun-deploy.yml@refs/heads/main'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
