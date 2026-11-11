@@ -56,7 +56,10 @@ The GitHub Actions **repository variables are not created by committing files**.
 Once bootstrap and container build/push are complete, use:
 
 ```powershell
-.\\scripts\\configure-github-vars.ps1 -StateBucket "ACTUAL_BUCKET_NAME" `\n  -CandidateFullName "ACTUAL_COMMIT_NAME" `\n  -ContainerImage "europe-west1-docker.pkg.dev/commitask/meridian-poc/api@sha256:ACTUAL_DIGEST" `\n  -DeployedCommit "ACTUAL_SHORT_GIT_SHA"
+.\scripts\configure-github-vars.ps1 -StateBucket "ACTUAL_BUCKET_NAME" `
+  -CandidateFullName "ACTUAL_COMMIT_NAME" `
+  -ContainerImage "europe-west1-docker.pkg.dev/commitask/meridian-poc/api@sha256:ACTUAL_DIGEST" `
+  -DeployedCommit "ACTUAL_SHORT_GIT_SHA"
 ```
 
 This script checks the project ID/number pairing and existence of the WIF provider, then writes **non-secret identifiers** using `gh variable set`. Create the protected `gcp-plan` environment via GitHub Settings before running authenticated plans. The Project Number is used in the WIF provider resource path; the Project ID is used in email and Artifact Registry references.
