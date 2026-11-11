@@ -2,6 +2,10 @@
 
 **Status:** Not yet deployed; Terraform has not been validated against a real project. This is a plan, not a successful deployment report.
 
+## Confirmed identifiers
+
+Project ID: `commitask`; Project Number: `924903658971`; region: `europe-west1`. These were supplied by the project owner. No actual cloud resources have been inspected or deployed.
+
 ## Prerequisites
 
 New billing-enabled GCP project; Terraform, Docker, Git and Google Cloud SDK installed. Choose unique GCS bucket name, and ensure the bootstrap **human administrator** has permissions to configure IAM and create infrastructure. No service-account JSON keys.
@@ -9,7 +13,7 @@ New billing-enabled GCP project; Terraform, Docker, Git and Google Cloud SDK ins
 ## Step 1 — bootstrap identities and remote state bucket
 
 ```powershell
-$ProjectId = "YOUR_GCP_PROJECT_ID"
+$ProjectId = "commitask"
 $Region    = "europe-west1"
 $Bucket    = "YOUR_GLOBALLY_UNIQUE_BUCKET_NAME"
 
