@@ -113,3 +113,15 @@ Once the organization has provisioned the real Cloud Identity/Workspace group an
 ## Amendment — 2026-11-11: GitHub Actions rather than GitLab CI
 
 The actual repository is `Comeon2022/CommitTask` on GitHub, and the original exercise specifies GitHub Actions. Therefore the PoC adds a GitHub Actions PR validation / plan workflow and a Terraform-managed GitHub OIDC Workload Identity Federation provider. This CI workflow is **not yet operational**: GCP project, bootstrap, repository variables and protected GitHub environment remain to be configured. GitLab CI would require a separate GitLab OIDC trust configuration and GitLab project.
+
+
+---
+
+## Technical review corrections — 2026-11-11
+
+1. **PostgreSQL 16 / small machine edition:** Explicitly set Cloud SQL `settings.edition = "ENTERPRISE"` because PostgreSQL 16 defaults to Enterprise Plus, incompatible with `db-f1-micro`.
+2. **Deployer service-account discovery:** `roles/iam.serviceAccountUser` assigned directly on the API and migration SAs includes `iam.serviceAccounts.get`, so project-wide `roles/iam.serviceAccountViewer` was deliberately not added. Live `terraform plan` must verify effective permissions.
+3. **Human operator impersonation:** Bootstrap now supports a named human email `terraform_operator_email` and grants `roles/iam.serviceAccountTokenCreator` exclusively on the deployer SA, only when the actual email is supplied.
+4. **EU secrets residency:** Both Secret Manager secrets now use one `user_managed` replica in `europe-west1` rather than unrestricted automatic replication.
+
+These are source changes only, not claims of successful deployment or compliance certification. `CLARIFICATIONS.md` remains unchanged.
