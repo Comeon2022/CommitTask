@@ -82,14 +82,21 @@ resource "google_storage_bucket_iam_member" "ci_plan_state" {
   member = "serviceAccount:${google_service_account.ci_plan.email}"
 }
 
-data "google_project" "current" {
-  project_id = var.project_id
+# Known numeric project ID avoids Cloud Resource Manager API read during
+# state recovery. Verify this input against GCP project metadata.
+variable "project_number" {
+  type        = string
+  description = "Numeric GCP project number; used for WIF principalSet IAM members."
+  validation {
+    condition     = can(regex("^[0-9]+$", var.project_number))
+    error_message = "project_number must contain only digits."
+  }
 }
 
 resource "google_service_account_iam_member" "github_main_plan" {
   service_account_id = google_service_account.ci_plan.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.repository/${var.github_repository_full_name}"
+  member             = "principalSet://iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.repository/${var.github_repository_full_name}"
 }
 
 output "ci_plan_service_account" {
@@ -135,7 +142,7 @@ resource "google_service_account" "ci_builder" {
 resource "google_service_account_iam_member" "github_main_build" {
   service_account_id = google_service_account.ci_builder.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.pipeline/main-docker-build"
+  member             = "principalSet://iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.pipeline/main-docker-build"
 }
 
 output "ci_builder_service_account" {
