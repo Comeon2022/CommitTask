@@ -182,3 +182,12 @@ This amendment supersedes previous text claiming PR Terraform plan/OIDC deployer
 - **Reviewer identity:** The external email `gcp-hr@comm-it.cloud` has not been confirmed as a directory user or group. New `reviewer_principal_type` input chooses `user` or `group`; default is user but the operator MUST confirm it before apply, to avoid a broken IAM binding.
 
 No Terraform validation, cloud apply, image build, or CI job success is claimed. `CLARIFICATIONS.md` remains unchanged.
+
+
+---
+
+## IAM and Secret Manager plan review — 2026-11-11
+
+- The deployer has `roles/iam.serviceAccountUser` *on the two exact service accounts* referenced by `data.google_service_account`; this includes `iam.serviceAccounts.get`. A project-level `roles/iam.serviceAccountViewer` was not added because it would expand IAM visibility needlessly.
+- The trusted main-branch CI Plan SA has no `secretmanager.versions.access`. To avoid a normal Secret Manager secret-version refresh and additional secret IAM, the workflow uses `terraform plan -refresh=false`. This compares against cached Terraform state and is not a reliable drift-detection report. Any required runtime refresh or actual permission failures still need live validation. Manual authorized deployment uses the normal refreshed plan.
+- Plan SA can read the state bucket, whose current values include generated secrets. Therefore read-only IAM is **not** proof of secret confidentiality. Restrict main/environment approvals and redesign secret-state handling for production.
