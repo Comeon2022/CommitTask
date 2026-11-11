@@ -1,5 +1,14 @@
 # AI-LOG.md — INCOMPLETE, NOT READY FOR SUBMISSION
 
+## Original AI conversation links
+
+- **Original ChatGPT conversation (account access required):** https://chatgpt.com/c/6af47a8e-8eac-83ed-b965-40dcc4e6fcbb
+- **Shared conversation snapshot (public to anyone with the link):** https://chatgpt.com/share/6af479c1-ec48-83ed-9099-36e69d7b2d55
+- **Source evidence:** Browser-saved HTML snapshots (`ניתוח משימת ראיון.html`, `ניתוח משימת ראיון(1).html`). The second snapshot exposed only 12 user messages and 6 complete assistant replies (6 replies were missing). The extracted partial transcript exists separately; these links and snapshots **do not constitute a complete transcript**.
+
+**Submission disclosure:** The complete unedited chat was not recoverable from the saved HTML. The links are provided as primary-source references, not as a substitute for the transcript required by the exercise. Do not claim full compliance.
+
+
 > **Critical:** The exercise requires the **entire unedited transcript of every AI conversation**, from the first prompt to the final response, with sessions separated. Redact **only credentials or keys**. A summary, reconstruction or selected quotations will be treated as missing. This repository does **not** yet contain the full transcript.
 >
 > **Do not submit this placeholder as a compliant log.**
