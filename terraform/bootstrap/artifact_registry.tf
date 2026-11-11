@@ -28,3 +28,12 @@ resource "google_artifact_registry_repository_iam_member" "github_builder_push" 
   role       = "roles/artifactregistry.writer"
   member     = "serviceAccount:${google_service_account.ci_builder.email}"
 }
+
+# Deploy job only pulls the immutable image from this one repository.
+resource "google_artifact_registry_repository_iam_member" "ci_deploy_image_read" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.api.location
+  repository = google_artifact_registry_repository.api.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.ci_cloudrun_deployer.email}"
+}
