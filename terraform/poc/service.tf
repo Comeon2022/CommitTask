@@ -50,6 +50,13 @@ resource "google_cloud_run_v2_service" "api" {
   deletion_protection = false
   ingress             = "INGRESS_TRAFFIC_ALL"
 
+  # Terraform owns the service network, runtime SA, secrets and environment.
+  # The CI deployment workflow owns only the container image digest. Prevent
+  # Terraform from reverting a newer immutable digest on a later infra plan.
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image]
+  }
+
   template {
     service_account = data.google_service_account.api.email
 
@@ -76,10 +83,6 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "CANDIDATE"
         value = var.candidate_full_name
-      }
-      env {
-        name  = "DEPLOYED_COMMIT"
-        value = var.deployed_commit
       }
       env {
         name  = "INSTANCE_CONNECTION_NAME"
@@ -136,4 +139,14 @@ output "health_url" {
 
 output "artifact_registry_repository" {
   value = "${var.region}-docker.pkg.dev/${var.project_id}/meridian-poc"
+}
+
+# Only this existing Cloud Run service may be deployed by GitHub Actions.
+# No project-wide Cloud Run permissions; CI cannot create other services.
+resource "google_cloud_run_v2_service_iam_member" "ci_deploy_existing_api" {
+  project  = var.project_id
+  location = google_cloud_run_v2_service.api.location
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:meridian-poc-ci-deploy@${var.project_id}.iam.gserviceaccount.com"
 }
