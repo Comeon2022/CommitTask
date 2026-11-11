@@ -51,6 +51,6 @@ jobs:
       - name: Initialize remote backend
         working-directory: terraform/poc
         run: terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=meridian/poc"
-      - name: Terraform plan (read-only SA, never apply)
+      - name: State-based Terraform plan (no refresh, never apply)
         working-directory: terraform/poc
-        run: terraform plan -input=false -lock=false -no-color -compact-warnings
+        run: terraform plan -input=false -refresh=false -lock=false -no-color -compact-warnings
