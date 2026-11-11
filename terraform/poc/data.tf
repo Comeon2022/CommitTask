@@ -62,7 +62,7 @@ resource "google_secret_manager_secret" "db_password" {
   replication {
     user_managed {
       replicas {
-        location = "europe-west1"
+        location = var.region
       }
     }
   }
@@ -88,7 +88,7 @@ resource "google_secret_manager_secret" "provider_token" {
   replication {
     user_managed {
       replicas {
-        location = "europe-west1"
+        location = var.region
       }
     }
   }
