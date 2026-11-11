@@ -53,7 +53,13 @@ def sql_probe() -> bool:
         cursor = connection.cursor()
         try:
             cursor.execute("SELECT 1")
-            return cursor.fetchone() == (1,)
+            row = cursor.fetchone()
+            # pg8000 may return a list (e.g. [1]), not a tuple (1,).
+            # Compare the scalar value rather than a driver-specific row type.
+            result_ok = row is not None and len(row) == 1 and row[0] == 1
+            if not result_ok:
+                app.logger.error("Cloud SQL probe returned unexpected result: %r", row)
+            return result_ok
         finally:
             cursor.close()
 
