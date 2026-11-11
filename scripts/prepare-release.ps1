@@ -8,6 +8,8 @@ param(
   [ValidateSet("europe-west1","europe-west3","europe-west4")][string]$Region = "europe-west1"
 )
 $ErrorActionPreference = "Stop"
+$PreviousTerraformImpersonation = $env:GOOGLE_IMPERSONATE_SERVICE_ACCOUNT
+$PreviousGcloudImpersonation = $env:CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $RepoRoot
 try {
@@ -16,6 +18,13 @@ try {
   & git diff --quiet HEAD --
   if ($LASTEXITCODE -ne 0) { throw "Dirty tracked working tree: commit changes first." }
   if ($CandidateFullName -match "YOUR_|PLACEHOLDER" -or !$CandidateFullName.Trim()) { throw "Supply actual candidate name" }
+  $Deployer = "meridian-poc-deployer@$ProjectId.iam.gserviceaccount.com"
+  $env:GOOGLE_IMPERSONATE_SERVICE_ACCOUNT = $Deployer
+  $env:CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT = $Deployer
+  & gcloud auth print-access-token --impersonate-service-account=$Deployer | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Cannot impersonate deployer; bootstrap operator IAM first." }
+  & gcloud artifacts repositories describe meridian-poc --project=$ProjectId --location=$Region --format="value(name)" | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Artifact Registry missing: terraform/bootstrap apply must run first." }
   $Tag = "$Region-docker.pkg.dev/$ProjectId/meridian-poc/api:$Commit"
   & gcloud auth configure-docker "$Region-docker.pkg.dev" --quiet
   if ($LASTEXITCODE -ne 0) { throw "gcloud Docker auth failed" }
@@ -32,7 +41,7 @@ try {
   }
   Push-Location (Join-Path $RepoRoot "terraform/poc")
   try {
-    & terraform init -input=false -backend-config="bucket=$StateBucket" -backend-config="prefix=meridian/poc"
+    & terraform init -input=false -backend-config="bucket=$StateBucket" -backend-config="prefix=meridian/poc" -backend-config="impersonate_service_account=$Deployer"
     if ($LASTEXITCODE -ne 0) { throw "Terraform backend init failed" }
     & terraform plan -input=false -out=release.tfplan -var="project_id=$ProjectId" -var="region=$Region" -var="candidate_full_name=$CandidateFullName" -var="deployed_commit=$Commit" -var="container_image=$DigestRef"
     if ($LASTEXITCODE -ne 0) { throw "Terraform plan failed" }
@@ -44,5 +53,7 @@ try {
   Write-Host "Pushed immutable image: $DigestRef"
   Write-Host "Review the plan and apply intentionally: terraform -chdir=terraform/poc apply release.tfplan"
 } finally {
+  $env:GOOGLE_IMPERSONATE_SERVICE_ACCOUNT = $PreviousTerraformImpersonation
+  $env:CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT = $PreviousGcloudImpersonation
   Pop-Location
 }
