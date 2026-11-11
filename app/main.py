@@ -10,7 +10,15 @@ app = Flask(__name__)
 PROJECT_ID = os.environ["PROJECT_ID"]
 REGION = os.environ["REGION"]
 CANDIDATE = os.environ["CANDIDATE"]
-DEPLOYED_COMMIT = os.environ["DEPLOYED_COMMIT"]
+# The image build embeds the exact Git SHA. Unlike an env var updated by
+# Terraform, this always tracks the container actually serving the request.
+# Fallback keeps pre-CI images compatible during transition.
+try:
+    with open("/app/source_commit", encoding="utf-8") as commit_file:
+        _build_sha = commit_file.read().strip()
+except FileNotFoundError:
+    _build_sha = ""
+DEPLOYED_COMMIT = _build_sha if len(_build_sha) == 40 else os.environ["DEPLOYED_COMMIT"]
 INSTANCE_CONNECTION_NAME = os.environ["INSTANCE_CONNECTION_NAME"]
 DB_NAME = os.environ["DB_NAME"]
 DB_IAM_USER = os.environ["DB_IAM_USER"]
