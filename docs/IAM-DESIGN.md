@@ -77,3 +77,8 @@ Bootstrap also creates `meridian-poc-plan` SA separate from `meridian-poc-deploy
 ## Artifact Registry least-privilege refinement — 2026-11-11
 
 The regional Docker repository is created and IAM-managed by the privileged bootstrap root. The `meridian-poc-deployer` service account no longer has project-wide `roles/artifactregistry.admin`; it retains repository-scoped `roles/artifactregistry.writer` for publishing images. No extra Reader role is necessary for that publisher. Cloud Run's service agent image-pull access should be checked during first real deployment. These changes are committed but have not yet been applied or validated against GCP.
+
+
+## Least-privilege GitHub builder — 2026-11-11
+
+A new meridian-poc-builder SA receives repository-scoped roles/artifactregistry.writer only, not project-wide Artifact Registry, database, Cloud Run, Secret Manager, or state access. A distinct github-build WIF provider checks immutable repository and owner IDs, main push event and exact Docker workflow_ref. Unique attribute.pipeline on the build provider isolates this impersonation binding from the existing github-plan provider. Bootstrap must be applied again before use. Protect main branch from unreviewed workflow edits.
