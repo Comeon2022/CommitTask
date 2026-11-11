@@ -84,6 +84,13 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "CANDIDATE"
         value = var.candidate_full_name
       }
+      # Compatibility for the already-running pre-CI image. New builds report
+      # the SHA embedded in /app/source_commit, ignoring this older fallback.
+      # Retain until the first automatic deploy succeeds to avoid boot failure.
+      env {
+        name  = "DEPLOYED_COMMIT"
+        value = var.deployed_commit
+      }
       env {
         name  = "INSTANCE_CONNECTION_NAME"
         value = google_sql_database_instance.postgres.connection_name
