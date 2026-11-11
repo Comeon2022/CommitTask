@@ -36,7 +36,7 @@ resource "google_sql_database" "app" {
 # IAM database login uses the *runtime service account* as the PostgreSQL principal.
 # Cloud SQL requires removing .gserviceaccount.com from Postgres SA usernames.
 resource "google_sql_user" "api_iam" {
-  name     = trimsuffix(google_service_account.api.email, ".gserviceaccount.com")
+  name     = trimsuffix(data.google_service_account.api.email, ".gserviceaccount.com")
   instance = google_sql_database_instance.postgres.name
   type     = "CLOUD_IAM_SERVICE_ACCOUNT"
 }
