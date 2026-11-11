@@ -37,6 +37,7 @@ def secret_exists_and_nonempty(secret_id: str) -> bool:
     response = _secret_client.access_secret_version(request={"name": secret_name})
     return bool(response.payload.data)
 
+
 def sql_probe() -> bool:
     # The Cloud SQL Python Connector generates and refreshes temporary IAM tokens.
     # PostgreSQL username is the runtime SA email minus .gserviceaccount.com.
@@ -64,9 +65,9 @@ def health():
 
     try:
         # Validate both required secrets on each request. SQL still uses IAM.
-                token_ok = secret_exists_and_nonempty(PROVIDER_TOKEN_SECRET)
-                password_ok = secret_exists_and_nonempty(DB_PASSWORD_SECRET)
-                secret_ok = token_ok and password_ok
+        token_ok = secret_exists_and_nonempty(PROVIDER_TOKEN_SECRET)
+        password_ok = secret_exists_and_nonempty(DB_PASSWORD_SECRET)
+        secret_ok = token_ok and password_ok
     except Exception:
         app.logger.exception("Secret Manager health check failed")
 
