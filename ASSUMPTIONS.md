@@ -125,3 +125,14 @@ The actual repository is `Comeon2022/CommitTask` on GitHub, and the original exe
 4. **EU secrets residency:** Both Secret Manager secrets now use one `user_managed` replica in `europe-west1` rather than unrestricted automatic replication.
 
 These are source changes only, not claims of successful deployment or compliance certification. `CLARIFICATIONS.md` remains unchanged.
+
+
+---
+
+## Regional placement amendment — 2026-11-11
+
+**Decision:** Deploy all region-configurable PoC resources in **`europe-west1` (Belgium)**. Both Terraform roots validate the region, and the GCS Terraform State bucket is now single-region `europe-west1` rather than `EU` multi-region. Cloud Run, Cloud SQL, subnet, Artifact Registry and both user-managed Secret Manager replicas use `var.region`.
+
+**Exception:** GCP resources such as VPC network, global peering address, project IAM/service accounts and Workload Identity Federation are intrinsically global or project-scoped. Their location cannot be made regional. No deployment has been executed; location/compliance must be checked during plan and review.
+
+See `docs/REGION-DESIGN.md`.
